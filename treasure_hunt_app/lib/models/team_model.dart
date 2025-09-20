@@ -8,6 +8,7 @@ class Team {
   final List<String> members;
   final String status; // 'pending', 'approved', 'rejected'
   final DateTime createdAt;
+  final String? role;  // **NEW: Add the role field (nullable)**
 
   Team({
     required this.id,
@@ -17,6 +18,7 @@ class Team {
     required this.members,
     required this.status,
     required this.createdAt,
+    this.role, // **NEW: Add to constructor**
   });
 
   factory Team.fromMap(Map<String, dynamic> data) {
@@ -28,6 +30,7 @@ class Team {
       members: List<String>.from(data['members']),
       status: data['status'],
       createdAt: (data['createdAt'] as Timestamp).toDate(),
+      role: data['role'], // **NEW: Read the role from Firestore**
     );
   }
 
@@ -40,6 +43,7 @@ class Team {
       'members': members,
       'status': status,
       'createdAt': Timestamp.fromDate(createdAt),
+      'role': role, // **NEW: Write the role to Firestore**
     };
   }
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:treasure_hunt_app/models/team_model.dart';
+// **NEW: Import the admin dashboard**
+import 'package:treasure_hunt_app/screens/admin_dashboard.dart';
 import 'package:treasure_hunt_app/screens/gamer_dashboard.dart';
 import 'package:treasure_hunt_app/screens/pending_screen.dart';
 import 'package:treasure_hunt_app/services/auth_service.dart';
@@ -10,7 +12,6 @@ class DecisionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // We can instantiate our services here to use them throughout the build method
     final AuthService auth = AuthService();
     final FirestoreService firestoreService = FirestoreService();
     final user = auth.currentUser;
@@ -33,9 +34,7 @@ class DecisionScreen extends StatelessWidget {
           );
         }
 
-        // **MODIFIED SECTION BELOW**
         if (!snapshot.hasData || snapshot.data == null) {
-          // This is the screen that gets a new logout button.
           return Scaffold(
             body: Center(
               child: Padding(
@@ -43,32 +42,18 @@ class DecisionScreen extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(
-                      Icons.search_off, // A more descriptive icon
-                      size: 80,
-                      color: Colors.grey,
-                    ),
+                    const Icon(Icons.search_off, size: 80, color: Colors.grey),
                     const SizedBox(height: 20),
                     const Text(
                       'Your team data was not found.',
                       style: TextStyle(fontSize: 18),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'This can happen if registration did not complete. Please log out and try again.',
-                      style: TextStyle(fontSize: 14, color: Colors.grey),
-                      textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 30),
-                    // **THE NEW LOGOUT BUTTON**
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.redAccent,
                       ),
-                      onPressed: () {
-                        auth.signOut();
-                      },
+                      onPressed: () => auth.signOut(),
                       child: const Text('Logout'),
                     ),
                   ],
@@ -80,6 +65,12 @@ class DecisionScreen extends StatelessWidget {
 
         final team = snapshot.data!;
 
+        // **NEW LOGIC: CHECK FOR ADMIN ROLE FIRST!**
+        if (team.role == 'admin') {
+          return const AdminDashboard();
+        }
+
+        // If not an admin, proceed with the normal user flow
         switch (team.status) {
           case 'approved':
             return GamerDashboard(team: team);
