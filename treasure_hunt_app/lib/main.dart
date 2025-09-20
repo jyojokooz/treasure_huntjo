@@ -1,14 +1,16 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+// **FIX: Re-added the missing import for material.dart**
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:treasure_hunt_app/firebase_options.dart';
 import 'package:treasure_hunt_app/screens/splash_screen.dart';
 import 'package:treasure_hunt_app/services/auth_service.dart';
 import 'package:treasure_hunt_app/services/music_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 
@@ -23,8 +25,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    // This line will now work correctly
     WidgetsBinding.instance.addObserver(this);
-    MusicService.instance.playBackgroundMusic();
+
+    // We don't play music here to support web autoplay policies
   }
 
   @override
@@ -39,6 +43,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    // This line will now work correctly
     WidgetsBinding.instance.removeObserver(this);
     MusicService.instance.dispose();
     super.dispose();
@@ -50,7 +55,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       value: AuthService().user,
       initialData: null,
       child: MaterialApp(
-        // **FIX: Add this line to remove the debug banner**
         debugShowCheckedModeBanner: false,
         title: 'Treasure Hunt',
         theme: ThemeData(

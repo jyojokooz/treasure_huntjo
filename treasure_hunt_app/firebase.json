@@ -1,0 +1,39 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "treasure-hunt-app-5dfbf",
+          "appId": "1:963413753770:android:088d86b72be8b42cfef5d3",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "treasure-hunt-app-5dfbf",
+          "configurations": {
+            "android": "1:963413753770:android:088d86b72be8b42cfef5d3",
+            "ios": "1:963413753770:ios:1c56d36528ebe7ccfef5d3",
+            "macos": "1:963413753770:ios:1c56d36528ebe7ccfef5d3",
+            "web": "1:963413753770:web:8c200eb1afaf5c1ffef5d3",
+            "windows": "1:963413753770:web:de3dc43e0209ad8cfef5d3"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

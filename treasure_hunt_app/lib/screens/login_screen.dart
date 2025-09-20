@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:treasure_hunt_app/screens/register_screen.dart';
 import 'package:treasure_hunt_app/services/auth_service.dart';
+import 'package:treasure_hunt_app/services/music_service.dart'; // <-- Make sure this import is here
 import 'package:treasure_hunt_app/widgets/glassmorphic_container.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -20,143 +21,160 @@ class _LoginScreenState extends State<LoginScreen> {
   String error = '';
   bool loading = false;
 
+  // **NEW: Helper function to start music if it's not already playing**
+  // This will be called on the first user interaction.
+  void _startMusic() {
+    if (!MusicService.instance.isPlaying) {
+      MusicService.instance.playBackgroundMusic();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          Image.asset(
-            'assets/images/background.png',
-            height: double.infinity,
-            width: double.infinity,
-            fit: BoxFit.cover,
-          ),
-          // Dark Overlay
-          Container(
-            // FIX 1: Replaced deprecated withOpacity
-            color: Colors.black.withAlpha((0.6 * 255).round()),
-          ),
-          SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 25.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Welcome, Adventurer!',
-                      style: GoogleFonts.cinzel(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        shadows: [
-                          const Shadow(blurRadius: 10, color: Colors.orange),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Your next clue awaits.',
-                      style: TextStyle(color: Colors.white70, fontSize: 16),
-                    ),
-                    const SizedBox(height: 40),
-                    GlassmorphicContainer(
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            TextFormField(
-                              style: const TextStyle(color: Colors.white),
-                              decoration: _inputDecoration(
-                                'Email',
-                                Icons.person_outline,
-                              ),
-                              validator: (val) =>
-                                  val!.isEmpty ? 'Enter an email' : null,
-                              onChanged: (val) => setState(() => email = val),
-                            ),
-                            const SizedBox(height: 20),
-                            TextFormField(
-                              style: const TextStyle(color: Colors.white),
-                              obscureText: true,
-                              decoration: _inputDecoration(
-                                'Password',
-                                Icons.lock_outline,
-                              ),
-                              validator: (val) => val!.length < 6
-                                  ? 'Password must be 6+ chars'
-                                  : null,
-                              onChanged: (val) =>
-                                  setState(() => password = val),
-                            ),
-                            const SizedBox(height: 30),
-                            loading
-                                ? const CircularProgressIndicator(
-                                    color: Colors.orange,
-                                  )
-                                : SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton(
-                                      style: _buttonStyle(),
-                                      onPressed: () async {
-                                        if (_formKey.currentState!.validate()) {
-                                          setState(() => loading = true);
-                                          dynamic result = await _auth.signIn(
-                                            email,
-                                            password,
-                                          );
-                                          if (result == null && mounted) {
-                                            setState(() {
-                                              error =
-                                                  'Could not sign in with those credentials';
-                                              loading = false;
-                                            });
-                                          }
-                                        }
-                                      },
-                                      child: const Text('Enter the Gates'),
-                                    ),
-                                  ),
-                            if (error.isNotEmpty) ...[
-                              const SizedBox(height: 15),
-                              Text(
-                                error,
-                                style: const TextStyle(
-                                  color: Colors.redAccent,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
+      // **NEW: GestureDetector to detect the very first tap anywhere on the screen.**
+      body: GestureDetector(
+        onTap: _startMusic, // This triggers the music to play.
+        child: Stack(
+          children: [
+            // Background Image
+            Image.asset(
+              'assets/images/background.png',
+              height: double.infinity,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
+            // Dark Overlay
+            Container(color: Colors.black.withAlpha((0.6 * 255).round())),
+            SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 25.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Welcome, Adventurer!',
+                        style: GoogleFonts.cinzel(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          shadows: [
+                            const Shadow(blurRadius: 10, color: Colors.orange),
                           ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const RegisterScreen(),
-                          ),
-                        );
-                      },
-                      child: Text(
-                        "Don't have a team? Join the Hunt!",
-                        style: TextStyle(color: Colors.orange.shade200),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Your next clue awaits.',
+                        style: TextStyle(color: Colors.white70, fontSize: 16),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 40),
+                      GlassmorphicContainer(
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TextFormField(
+                                style: const TextStyle(color: Colors.white),
+                                decoration: _inputDecoration(
+                                  'Email',
+                                  Icons.person_outline,
+                                ),
+                                validator: (val) =>
+                                    val!.isEmpty ? 'Enter an email' : null,
+                                onChanged: (val) => setState(() => email = val),
+                              ),
+                              const SizedBox(height: 20),
+                              TextFormField(
+                                style: const TextStyle(color: Colors.white),
+                                obscureText: true,
+                                decoration: _inputDecoration(
+                                  'Password',
+                                  Icons.lock_outline,
+                                ),
+                                validator: (val) => val!.length < 6
+                                    ? 'Password must be 6+ chars'
+                                    : null,
+                                onChanged: (val) =>
+                                    setState(() => password = val),
+                              ),
+                              const SizedBox(height: 30),
+                              loading
+                                  ? const CircularProgressIndicator(
+                                      color: Colors.orange,
+                                    )
+                                  : SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        style: _buttonStyle(),
+                                        onPressed: () async {
+                                          // **NEW: Also call _startMusic here as a fallback.**
+                                          _startMusic();
+
+                                          if (_formKey.currentState!
+                                              .validate()) {
+                                            setState(() => loading = true);
+                                            dynamic result = await _auth.signIn(
+                                              email,
+                                              password,
+                                            );
+                                            if (result == null && mounted) {
+                                              setState(() {
+                                                error =
+                                                    'Could not sign in with those credentials';
+                                                loading = false;
+                                              });
+                                            }
+                                          }
+                                        },
+                                        child: const Text('Enter the Gates'),
+                                      ),
+                                    ),
+                              if (error.isNotEmpty) ...[
+                                const SizedBox(height: 15),
+                                Text(
+                                  error,
+                                  style: const TextStyle(
+                                    color: Colors.redAccent,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      TextButton(
+                        onPressed: () {
+                          // Trigger music if user goes to register screen first
+                          _startMusic();
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const RegisterScreen(),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          "Don't have a team? Join the Hunt!",
+                          style: TextStyle(color: Colors.orange.shade200),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
+  // Helper methods for styling
   InputDecoration _inputDecoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
@@ -164,7 +182,6 @@ class _LoginScreenState extends State<LoginScreen> {
       prefixIcon: Icon(icon, color: Colors.white70),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        // FIX 2: Replaced deprecated withOpacity
         borderSide: BorderSide(
           color: Colors.white.withAlpha((0.3 * 255).round()),
         ),
