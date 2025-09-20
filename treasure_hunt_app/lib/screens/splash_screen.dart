@@ -13,12 +13,16 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
 
+  // **IMPROVEMENT: Define the duration in one place for easy changes.**
+  static const int _splashDurationInSeconds = 5;
+
   @override
   void initState() {
     super.initState();
 
+    // **FIX: Changed the duration from 3 seconds to 5 seconds.**
     _controller = AnimationController(
-      duration: const Duration(seconds: 3),
+      duration: const Duration(seconds: _splashDurationInSeconds),
       vsync: this,
     );
 
@@ -41,7 +45,11 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   _navigateToHome() async {
-    await Future.delayed(const Duration(seconds: 3), () {});
+    // **FIX: Changed the delay to match the new 5-second duration.**
+    await Future.delayed(
+      const Duration(seconds: _splashDurationInSeconds),
+      () {},
+    );
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -93,8 +101,6 @@ class _SplashScreenState extends State<SplashScreen>
                     },
                   ),
                   const SizedBox(height: 16),
-
-                  // **FIX 1: Replaced Container with SizedBox for better performance.**
                   SizedBox(
                     width: MediaQuery.of(context).size.width * 0.6,
                     child: ClipRRect(
@@ -105,7 +111,6 @@ class _SplashScreenState extends State<SplashScreen>
                           return LinearProgressIndicator(
                             value: _controller.value,
                             minHeight: 8,
-                            // **FIX 2: Replaced deprecated withOpacity with withAlpha.**
                             backgroundColor: Colors.white.withAlpha(
                               (0.3 * 255).round(),
                             ),
