@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart'; // <-- ADD THIS IMPORT
 import 'package:treasure_hunt_app/screens/auth_wrapper.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -13,14 +14,12 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
 
-  // **IMPROVEMENT: Define the duration in one place for easy changes.**
   static const int _splashDurationInSeconds = 5;
 
   @override
   void initState() {
     super.initState();
 
-    // **FIX: Changed the duration from 3 seconds to 5 seconds.**
     _controller = AnimationController(
       duration: const Duration(seconds: _splashDurationInSeconds),
       vsync: this,
@@ -29,7 +28,7 @@ class _SplashScreenState extends State<SplashScreen>
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
+        curve: const Interval(0.0, 0.7, curve: Curves.easeIn),
       ),
     );
 
@@ -45,7 +44,6 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   _navigateToHome() async {
-    // **FIX: Changed the delay to match the new 5-second duration.**
     await Future.delayed(
       const Duration(seconds: _splashDurationInSeconds),
       () {},
@@ -71,6 +69,7 @@ class _SplashScreenState extends State<SplashScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
+          // Background Image
           FadeTransition(
             opacity: _fadeAnimation,
             child: Image.asset(
@@ -78,6 +77,24 @@ class _SplashScreenState extends State<SplashScreen>
               fit: BoxFit.cover,
             ),
           ),
+
+          // **NEW: Fading Title Text**
+          FadeTransition(
+            opacity: _fadeAnimation,
+            child: Align(
+              // Position the text slightly above the center
+              alignment: const Alignment(0, -0.4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildStyledText("RITU", 80),
+                  _buildStyledText("TREASURE HUNT", 50),
+                ],
+              ),
+            ),
+          ),
+
+          // Loading Indicator UI (at the bottom)
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
@@ -85,6 +102,7 @@ class _SplashScreenState extends State<SplashScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // ... (The loading bar and percentage text code remains unchanged)
                   AnimatedBuilder(
                     animation: _controller,
                     builder: (context, child) {
@@ -128,6 +146,54 @@ class _SplashScreenState extends State<SplashScreen>
           ),
         ],
       ),
+    );
+  }
+
+  // **NEW HELPER WIDGET for creating the stylized text**
+  Widget _buildStyledText(String text, double fontSize) {
+    // We use a Stack to layer the text outline behind the gradient fill
+    return Stack(
+      children: <Widget>[
+        // The text outline (the layer behind)
+        Text(
+          text,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.bangers(
+            fontSize: fontSize,
+            // Use a Paint object to create the stroke effect
+            foreground: Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 6
+              ..color = Colors.black, // Outline color
+            shadows: [
+              Shadow(
+                blurRadius: 10.0,
+                // ignore: deprecated_member_use
+                color: Colors.black.withOpacity(0.5),
+                offset: const Offset(5, 5),
+              ),
+            ],
+          ),
+        ),
+        // The gradient text fill (the layer on top)
+        ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (bounds) => LinearGradient(
+            colors: [Colors.redAccent, Colors.orange.shade400],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.bangers(
+              fontSize: fontSize,
+              color: Colors
+                  .white, // This color is irrelevant, the gradient will override it
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
