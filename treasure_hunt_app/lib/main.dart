@@ -1,13 +1,13 @@
-// lib/main.dart
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:treasure_hunt_app/services/auth_service.dart';
-import 'package:treasure_hunt_app/screens/splash_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:treasure_hunt_app/screens/splash_screen.dart';
+import 'package:treasure_hunt_app/services/auth_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // Initialize Firebase
+  await Firebase.initializeApp();
   runApp(const MyApp());
 }
 
@@ -16,8 +16,8 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamProvider.value(
-      value: AuthService().user, // Provides user stream to the app
+    return StreamProvider<User?>.value(
+      value: AuthService().user,
       initialData: null,
       child: MaterialApp(
         title: 'Treasure Hunt',
@@ -25,12 +25,10 @@ class MyApp extends StatelessWidget {
           primarySwatch: Colors.orange,
           brightness: Brightness.dark,
           inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           ),
         ),
-        home: SplashScreen(),
+        home: const SplashScreen(),
       ),
     );
   }
