@@ -1,6 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-// **FIX: Re-added the missing import for material.dart**
+import 'package:flutter/foundation.dart'; // **NEW: Import for kIsWeb**
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:treasure_hunt_app/firebase_options.dart';
@@ -25,10 +25,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    // This line will now work correctly
     WidgetsBinding.instance.addObserver(this);
 
-    // We don't play music here to support web autoplay policies
+    // **THE FIX: Use kIsWeb to run code only on mobile platforms**
+    // 'kIsWeb' is a special constant that is true only when the app is running in a web browser.
+    // The '!' makes the condition "if not web".
+    if (!kIsWeb) {
+      // If we are on Android, iOS, or desktop, play the music automatically.
+      MusicService.instance.playBackgroundMusic();
+    }
+    // If we are on the web, this code is skipped, and the music will wait for user interaction.
   }
 
   @override
@@ -43,7 +49,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    // This line will now work correctly
     WidgetsBinding.instance.removeObserver(this);
     MusicService.instance.dispose();
     super.dispose();
