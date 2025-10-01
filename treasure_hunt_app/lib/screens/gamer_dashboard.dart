@@ -15,28 +15,29 @@ class GamerDashboard extends StatefulWidget {
 
 class _GamerDashboardState extends State<GamerDashboard> {
   int _selectedIndex = 0;
-
-  // We need to define the pages list inside the state
   late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
-    // Initialize the list of pages here, so we can pass the `widget.team` data
     _pages = [
+      // FIX: Removed the 'team' parameter from CluesView() since it no longer needs it.
       const CluesView(), // Index 0
+
       const Center(
         child: Text(
           'Map View - Coming Soon!',
           style: TextStyle(color: Colors.white70),
         ),
       ), // Index 1
+
       const Center(
         child: Text(
           'Inventory - Coming Soon!',
           style: TextStyle(color: Colors.white70),
         ),
       ), // Index 2
+      // TeamView still needs the team data to display member info.
       TeamView(team: widget.team), // Index 3
     ];
   }
@@ -53,8 +54,7 @@ class _GamerDashboardState extends State<GamerDashboard> {
     final screenSize = MediaQuery.of(context).size;
 
     return Scaffold(
-      extendBody:
-          true, // Allows the body to extend behind the semi-transparent nav bar
+      extendBody: true,
       bottomNavigationBar: GameNavBar(
         selectedIndex: _selectedIndex,
         onItemTapped: _onItemTapped,
@@ -76,11 +76,9 @@ class _GamerDashboardState extends State<GamerDashboard> {
             ),
             child: Column(
               children: [
-                // The main content area now shows the selected page
                 Expanded(
                   child: IndexedStack(index: _selectedIndex, children: _pages),
                 ),
-                // The forfeit button remains at the bottom of the frame
                 TextButton.icon(
                   icon: Icon(Icons.exit_to_app, color: Colors.red.shade300),
                   label: Text(

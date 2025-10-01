@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-// **NEW: Import the new single management view**
 import 'package:treasure_hunt_app/screens/admin_panel/manage_teams_view.dart';
 import 'package:treasure_hunt_app/screens/admin_panel/admin_profile_view.dart';
 import 'package:treasure_hunt_app/widgets/custom_admin_nav_bar.dart';
+// NEW: Import the new global level management view.
+import 'package:treasure_hunt_app/screens/admin_panel/manage_levels_view.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -15,17 +16,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
   int _selectedIndex = 0;
   final PageController _pageController = PageController();
 
-  // **UPDATED: The page list is now simpler**
+  // UPDATED: The page list now includes the ManageLevelsView.
   final List<Widget> _pages = [
-    const ManageTeamsView(), // Index 0: Manage Teams (Pending & Approved)
-    const Center(child: Text('Notifications (View 2)')), // Index 1: Placeholder
-    const AdminProfileView(), // Index 2: Settings (Admin Profile)
+    const ManageTeamsView(), // Index 0
+    const ManageLevelsView(), // Index 1: Replaced placeholder
+    const AdminProfileView(), // Index 2
   ];
 
-  // **UPDATED: Titles list is also shorter**
+  // UPDATED: Titles list reflects the change.
   final List<String> _titles = const [
     'Manage Teams',
-    'Notifications',
+    'Manage Levels',
     'Admin Profile',
   ];
 
