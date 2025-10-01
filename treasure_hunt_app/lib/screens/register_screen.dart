@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-// **FIX: Corrected the typo in this import statement from '.' to ':'**
 import 'package:treasure_hunt_app/services/auth_service.dart';
 import 'package:treasure_hunt_app/widgets/glassmorphic_container.dart';
 
@@ -15,9 +14,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final AuthService _auth = AuthService();
   final _formKey = GlobalKey<FormState>();
 
-  String email = '', password = '', teamName = '', error = '';
-  List<String> members = List.filled(4, '');
+  // UPDATED: Added collegeName state variable
+  String email = '', password = '', teamName = '', collegeName = '', error = '';
   bool loading = false;
+
+  final List<TextEditingController> _memberControllers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _addMemberController();
+    _addMemberController();
+  }
+
+  void _addMemberController() {
+    _memberControllers.add(TextEditingController());
+  }
+
+  @override
+  void dispose() {
+    for (var controller in _memberControllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +73,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   const SizedBox(height: 10),
                   const Text(
-                    'Assemble your team of four.',
+                    'Assemble your team of 2 to 4.',
                     style: TextStyle(color: Colors.white70, fontSize: 16),
                   ),
                   const SizedBox(height: 30),
@@ -74,7 +94,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             onChanged: (val) => setState(() => teamName = val),
                           ),
                           const SizedBox(height: 20),
+                          // NEW: College Name text field
+                          TextFormField(
+                            style: const TextStyle(color: Colors.white),
+                            decoration: _inputDecoration(
+                              'College Name',
+                              Icons.school_outlined,
+                            ),
+                            validator: (val) =>
+                                val!.isEmpty ? 'Enter your college name' : null,
+                            onChanged: (val) =>
+                                setState(() => collegeName = val),
+                          ),
+                          const SizedBox(height: 20),
                           ..._buildMemberFields(),
+                          if (_memberControllers.length < 4)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.orange.shade200,
+                                ),
+                                icon: const Icon(Icons.add_circle_outline),
+                                label: const Text('Add Another Member'),
+                                onPressed: () {
+                                  setState(() {
+                                    _addMemberController();
+                                  });
+                                },
+                              ),
+                            ),
                           const SizedBox(height: 20),
                           TextFormField(
                             style: const TextStyle(color: Colors.white),
@@ -111,11 +160,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     onPressed: () async {
                                       if (_formKey.currentState!.validate()) {
                                         setState(() => loading = true);
+                                        final members = _memberControllers
+                                            .map(
+                                              (controller) =>
+                                                  controller.text.trim(),
+                                            )
+                                            .toList();
+
+                                        // UPDATED: Pass collegeName to the auth service
                                         dynamic result = await _auth
                                             .registerAndCreateTeam(
                                               email,
                                               password,
                                               teamName,
+                                              collegeName,
                                               members,
                                             );
 
@@ -128,10 +186,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                             loading = false;
                                           });
                                         } else {
-                                          // The mounted check is already here from our previous fix,
-                                          // ensuring the lint warning is also resolved.
                                           if (mounted) {
-                                            // ignore: use_build_context_synchronously
                                             Navigator.pop(context);
                                           }
                                         }
@@ -174,32 +229,52 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   List<Widget> _buildMemberFields() {
     List<Widget> fields = [];
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < _memberControllers.length; i++) {
       fields.add(
         Padding(
           padding: const EdgeInsets.only(bottom: 20.0),
-          child: TextFormField(
-            style: const TextStyle(color: Colors.white),
-            decoration: _inputDecoration(
-              'Member ${i + 1} Name',
-              Icons.person_outline,
-            ),
-            validator: (val) =>
-                val!.isEmpty ? 'Enter member ${i + 1}\'s name' : null,
-            onChanged: (val) => setState(() => members[i] = val),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _memberControllers[i],
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _inputDecoration(
+                    i < 2
+                        ? 'Member ${i + 1} Name (Required)'
+                        : 'Member ${i + 1} Name (Optional)',
+                    Icons.person_outline,
+                  ),
+                  validator: (val) {
+                    if (i < 2 && (val == null || val.isEmpty)) {
+                      return 'Enter member ${i + 1}\'s name';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+              if (i > 1)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8.0),
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.remove_circle_outline,
+                      color: Colors.redAccent,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _memberControllers[i].dispose();
+                        _memberControllers.removeAt(i);
+                      });
+                    },
+                  ),
+                ),
+            ],
           ),
         ),
       );
     }
-    fields.removeLast();
-    fields.add(
-      TextFormField(
-        style: const TextStyle(color: Colors.white),
-        decoration: _inputDecoration('Member 4 Name', Icons.person_outline),
-        validator: (val) => val!.isEmpty ? 'Enter member 4\'s name' : null,
-        onChanged: (val) => setState(() => members[3] = val),
-      ),
-    );
     return fields;
   }
 

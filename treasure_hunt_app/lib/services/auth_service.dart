@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:treasure_hunt_app/models/team_model.dart';
-// **FIX: Corrected the typo in this import statement**
 import 'package:treasure_hunt_app/services/firestore_service.dart';
 
 class AuthService {
@@ -25,10 +24,12 @@ class AuthService {
     }
   }
 
+  // UPDATED: Added 'collegeName' parameter
   Future<User?> registerAndCreateTeam(
     String email,
     String password,
     String teamName,
+    String collegeName,
     List<String> members,
   ) async {
     User? user;
@@ -45,6 +46,7 @@ class AuthService {
         Team newTeam = Team(
           id: user.uid,
           teamName: teamName,
+          collegeName: collegeName, // NEW: Pass collegeName to the model
           teamCaptainUid: user.uid,
           teamCaptainEmail: email,
           members: members,

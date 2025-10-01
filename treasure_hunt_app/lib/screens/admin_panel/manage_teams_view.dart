@@ -92,7 +92,6 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
     }
   }
 
-  // **FIX: THE MISSING FUNCTION IS NOW INCLUDED HERE**
   Future<void> _showDeleteConfirmationDialog(
     BuildContext context,
     DocumentReference teamRef,
@@ -167,16 +166,50 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
                       vertical: 5,
                     ),
                     child: ListTile(
+                      isThreeLine: true, // NEW: Allow for three lines
                       title: Text(
                         team.teamName,
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      subtitle: Text('Captain: ${team.teamCaptainEmail}'),
+                      // UPDATED: Subtitle now shows college and captain
+                      subtitle: Text(
+                        'College: ${team.collegeName}\nCaptain: ${team.teamCaptainEmail}',
+                      ),
                       trailing: _buildActionButtons(
                         context,
                         doc.reference,
                         team,
                       ),
+                      onTap: () {
+                        // Optional: Show more details on tap
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text(team.teamName),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('College: ${team.collegeName}'),
+                                const SizedBox(height: 8),
+                                Text('Captain: ${team.teamCaptainEmail}'),
+                                const SizedBox(height: 8),
+                                const Text(
+                                  'Members:',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                ...team.members.map((m) => Text('- $m')),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                child: const Text('Close'),
+                                onPressed: () => Navigator.of(context).pop(),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   );
                 }).toList(),
