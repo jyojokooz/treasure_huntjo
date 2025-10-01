@@ -10,7 +10,11 @@ class Team {
   final String status;
   final String role;
   final DateTime createdAt;
-  // REMOVED: isLevel1Unlocked, isLevel2Unlocked, isLevel3Unlocked are now global.
+
+  // This field will store the team's submission data for the Level 1 quiz.
+  // It's a map that can contain fields like 'score', 'totalQuestions', and 'submittedAt'.
+  // It is nullable because a team that hasn't played Level 1 won't have this data.
+  final Map<String, dynamic>? level1Submission;
 
   Team({
     required this.id,
@@ -20,11 +24,13 @@ class Team {
     required this.teamCaptainEmail,
     required this.members,
     required this.status,
-    this.role = 'user',
+    this.role = 'user', // Default role is 'user'
     required this.createdAt,
-    // REMOVED: Level fields from constructor.
+    this.level1Submission, // Optional parameter for quiz data
   });
 
+  // A factory constructor to create a Team instance from a Firestore document map.
+  // This is used whenever you read data from the database.
   factory Team.fromMap(Map<String, dynamic> map) {
     return Team(
       id: map['id'] ?? '',
@@ -35,11 +41,15 @@ class Team {
       members: List<String>.from(map['members'] ?? []),
       status: map['status'] ?? 'pending',
       role: map['role'] ?? 'user',
+      // Firestore stores dates as Timestamps, so we need to convert it.
       createdAt: (map['createdAt'] as Timestamp).toDate(),
-      // REMOVED: Reading level fields from map.
+      // Read the submission data. It will be null if the field doesn't exist.
+      level1Submission: map['level1Submission'] as Map<String, dynamic>?,
     );
   }
 
+  // A method to convert a Team instance into a map.
+  // This is used whenever you write data to the database.
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -51,7 +61,8 @@ class Team {
       'status': status,
       'role': role,
       'createdAt': createdAt,
-      // REMOVED: Writing level fields to map.
+      // Write the submission data to the map.
+      'level1Submission': level1Submission,
     };
   }
 }

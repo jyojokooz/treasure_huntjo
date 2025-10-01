@@ -1,41 +1,28 @@
+// lib/screens/game_panel/clues_view.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:treasure_hunt_app/screens/game_panel/quiz_screen.dart'; // Import the quiz screen
 
 class CluesView extends StatelessWidget {
-  // This view is now self-contained and no longer needs the 'team' object passed to it.
   const CluesView({super.key});
 
-  // A private getter to easily reference the single global document
-  // that controls the lock status for all levels.
   DocumentReference get _levelsDocRef =>
       FirebaseFirestore.instance.collection('game_settings').doc('levels');
 
   @override
   Widget build(BuildContext context) {
-    // The entire view is wrapped in a StreamBuilder. This widget listens for
-    // real-time changes to our global 'levels' document in Firestore.
-    // If an admin unlocks a level, this stream will get the new data, and the
-    // UI will automatically rebuild to show the unlocked state.
     return StreamBuilder<DocumentSnapshot>(
       stream: _levelsDocRef.snapshots(),
       builder: (context, snapshot) {
-        // Show a loading indicator while fetching the initial data.
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-
-        // Handle potential errors, such as permission issues.
         if (snapshot.hasError) {
           return const Center(child: Text('Error loading game state.'));
         }
 
-        // Safely access the data. If the 'levels' document doesn't exist yet,
-        // we default to an empty map to avoid null errors.
         final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
-
-        // Read the boolean lock status for each level from the data.
-        // If a field doesn't exist in the document, we default to 'false' (locked).
         final isLevel1Unlocked = data['isLevel1Unlocked'] ?? false;
         final isLevel2Unlocked = data['isLevel2Unlocked'] ?? false;
         final isLevel3Unlocked = data['isLevel3Unlocked'] ?? false;
@@ -45,7 +32,6 @@ class CluesView extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Build the button for Level 1, passing in its global lock status.
                 _buildLevelButton(
                   context: context,
                   levelNumber: 1,
@@ -53,10 +39,15 @@ class CluesView extends StatelessWidget {
                   isUnlocked: isLevel1Unlocked,
                   onPressed: () {
                     debugPrint('Navigating to Level 1...');
-                    // TODO: Add navigation to the Level 1 screen.
+                    // This is the navigation to the quiz screen.
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const QuizScreen(),
+                      ),
+                    );
                   },
                 ),
-                // Build the button for Level 2.
                 _buildLevelButton(
                   context: context,
                   levelNumber: 2,
@@ -67,7 +58,6 @@ class CluesView extends StatelessWidget {
                     // TODO: Add navigation to the Level 2 screen.
                   },
                 ),
-                // Build the button for Level 3.
                 _buildLevelButton(
                   context: context,
                   levelNumber: 3,
@@ -86,9 +76,6 @@ class CluesView extends StatelessWidget {
     );
   }
 
-  // This reusable helper widget builds a styled button for a single level.
-  // Its appearance (color, icon, enabled/disabled state) is determined by the
-  // 'isUnlocked' boolean passed to it.
   Widget _buildLevelButton({
     required BuildContext context,
     required int levelNumber,

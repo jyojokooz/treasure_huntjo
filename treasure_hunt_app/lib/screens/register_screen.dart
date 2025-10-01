@@ -187,6 +187,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                           });
                                         } else {
                                           if (mounted) {
+                                            // ignore: use_build_context_synchronously
                                             Navigator.pop(context);
                                           }
                                         }

@@ -1,9 +1,10 @@
+// lib/screens/admin_dashboard.dart
 import 'package:flutter/material.dart';
-import 'package:treasure_hunt_app/screens/admin_panel/manage_teams_view.dart';
-import 'package:treasure_hunt_app/screens/admin_panel/admin_profile_view.dart';
-import 'package:treasure_hunt_app/widgets/custom_admin_nav_bar.dart';
-// NEW: Import the new global level management view.
-import 'package:treasure_hunt_app/screens/admin_panel/manage_levels_view.dart';
+import 'admin_panel/admin_profile_view.dart';
+import 'admin_panel/manage_levels_view.dart';
+import 'admin_panel/manage_quizzes_view.dart';
+import 'admin_panel/manage_teams_view.dart';
+import '../widgets/custom_admin_nav_bar.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -16,16 +17,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
   int _selectedIndex = 0;
   final PageController _pageController = PageController();
 
-  // UPDATED: The page list now includes the ManageLevelsView.
   final List<Widget> _pages = [
-    const ManageTeamsView(), // Index 0
-    const ManageLevelsView(), // Index 1: Replaced placeholder
-    const AdminProfileView(), // Index 2
+    const ManageTeamsView(),
+    const ManageQuizzesView(),
+    const ManageLevelsView(),
+    const AdminProfileView(),
   ];
 
-  // UPDATED: Titles list reflects the change.
   final List<String> _titles = const [
     'Manage Teams',
+    'Manage Quizzes',
     'Manage Levels',
     'Admin Profile',
   ];
@@ -58,15 +59,30 @@ class _AdminDashboardState extends State<AdminDashboard> {
         title: Text(_titles[_selectedIndex]),
         automaticallyImplyLeading: false,
       ),
-      backgroundColor: Colors.orange.shade50,
-      body: PageView(
-        controller: _pageController,
-        onPageChanged: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        children: _pages,
+      // REMOVED: The old solid background color.
+      // backgroundColor: Colors.orange.shade50,
+
+      // NEW: The body is now a Container which holds our background image.
+      body: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            // Use the path to the image you added in Step 1.
+            image: AssetImage('assets/images/admin_background.png'),
+            // This makes the image cover the entire screen.
+            fit: BoxFit.cover,
+          ),
+        ),
+        // The PageView is now the child of the container, so it appears
+        // on top of the background image.
+        child: PageView(
+          controller: _pageController,
+          onPageChanged: (index) {
+            setState(() {
+              _selectedIndex = index;
+            });
+          },
+          children: _pages,
+        ),
       ),
       bottomNavigationBar: CustomAdminNavBar(
         selectedIndex: _selectedIndex,

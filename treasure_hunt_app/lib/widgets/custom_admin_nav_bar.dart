@@ -13,6 +13,7 @@ class CustomAdminNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color selectedColor = Colors.orange.shade300;
+    const Color iconColor = Colors.black87;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
@@ -33,25 +34,46 @@ class CustomAdminNavBar extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          // We now have 3 items
+          // UPDATED: Now there are 4 items to match the AdminDashboard pages.
           _buildNavItem(
-            Icons.group_work_outlined,
+            Icons.group_work_outlined, // Icon for Manage Teams
             0,
             selectedColor,
-          ), // Manage Teams
+            iconColor,
+          ),
+          // NEW: Item for Manage Quizzes
           _buildNavItem(
-            Icons.notifications_none_outlined,
+            Icons.quiz_outlined, // Icon for Manage Quizzes
             1,
             selectedColor,
-          ), // Notifications
-          _buildNavItem(Icons.settings_outlined, 2, selectedColor), // Profile
+            iconColor,
+          ),
+          // NEW: Item for Manage Levels
+          _buildNavItem(
+            Icons.key_outlined, // Icon for Manage Levels
+            2,
+            selectedColor,
+            iconColor,
+          ),
+          // UPDATED: Profile is now at index 3
+          _buildNavItem(
+            Icons.settings_outlined, // Icon for Profile
+            3,
+            selectedColor,
+            iconColor,
+          ),
         ],
       ),
     );
   }
 
   // Helper method to build each item
-  Widget _buildNavItem(IconData icon, int index, Color selectedColor) {
+  Widget _buildNavItem(
+    IconData icon,
+    int index,
+    Color selectedColor,
+    Color iconColor,
+  ) {
     bool isSelected = selectedIndex == index;
 
     return InkWell(
@@ -63,16 +85,18 @@ class CustomAdminNavBar extends StatelessWidget {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            if (isSelected)
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: selectedColor,
-                  shape: BoxShape.circle,
-                ),
+            // Animated circle for the selected item
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+              width: isSelected ? 50 : 0,
+              height: isSelected ? 50 : 0,
+              decoration: BoxDecoration(
+                color: selectedColor,
+                shape: BoxShape.circle,
               ),
-            Icon(icon, size: 28, color: Colors.black87),
+            ),
+            Icon(icon, size: 28, color: iconColor),
           ],
         ),
       ),
