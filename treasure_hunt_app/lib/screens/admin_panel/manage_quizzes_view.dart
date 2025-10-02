@@ -1,9 +1,11 @@
 // lib/screens/admin_panel/manage_quizzes_view.dart
 
-// FIX: Corrected all import statements to use ':' instead of '.'
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:treasure_hunt_app/models/quiz_model.dart';
+import 'package:treasure_hunt_app/services/image_upload_service.dart';
 import 'package:uuid/uuid.dart';
 
 class ManageQuizzesView extends StatefulWidget {
@@ -16,6 +18,7 @@ class ManageQuizzesView extends StatefulWidget {
 class _ManageQuizzesViewState extends State<ManageQuizzesView> {
   final CollectionReference _quizzesCollection = FirebaseFirestore.instance
       .collection('quizzes');
+  final ImageUploadService _uploadService = ImageUploadService();
 
   void _showQuestionDialog({QuizQuestion? existingQuestion}) {
     final formKey = GlobalKey<FormState>();
@@ -31,11 +34,28 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
     );
     int? correctAnswerIndex = existingQuestion?.correctAnswerIndex;
 
+    XFile? pickedImage;
+    String? imageUrl = existingQuestion?.imageUrl;
+    bool isUploading = false;
+
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            Future<void> pickImage() async {
+              final ImagePicker picker = ImagePicker();
+              final XFile? image = await picker.pickImage(
+                source: ImageSource.gallery,
+              );
+              if (image != null) {
+                setDialogState(() {
+                  pickedImage = image;
+                });
+              }
+            }
+
             return AlertDialog(
               title: Text(
                 existingQuestion == null ? 'Add Question' : 'Edit Question',
@@ -46,6 +66,34 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (pickedImage != null)
+                        Image.file(File(pickedImage!.path), height: 100)
+                      else if (imageUrl != null)
+                        Image.network(imageUrl!, height: 100),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          TextButton.icon(
+                            icon: const Icon(Icons.image),
+                            label: Text(
+                              imageUrl == null && pickedImage == null
+                                  ? 'Add Image'
+                                  : 'Change Image',
+                            ),
+                            onPressed: pickImage,
+                          ),
+                          if (imageUrl != null || pickedImage != null)
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () {
+                                setDialogState(() {
+                                  pickedImage = null;
+                                  imageUrl = null;
+                                });
+                              },
+                            ),
+                        ],
+                      ),
                       TextFormField(
                         initialValue: questionText,
                         decoration: const InputDecoration(
@@ -56,34 +104,38 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
                         onChanged: (val) => questionText = val,
                       ),
                       const SizedBox(height: 16),
-                      ...List.generate(4, (index) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  controller: optionControllers[index],
-                                  decoration: InputDecoration(
-                                    labelText: 'Option ${index + 1}',
+                      // Updated Radio widgets using RadioGroup for Flutter 3.35+
+                      RadioGroup<int>(
+                        groupValue: correctAnswerIndex,
+                        onChanged: (value) {
+                          setDialogState(() {
+                            correctAnswerIndex = value;
+                          });
+                        },
+                        child: Column(
+                          children: List.generate(4, (index) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8.0),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: optionControllers[index],
+                                      decoration: InputDecoration(
+                                        labelText: 'Option ${index + 1}',
+                                      ),
+                                      validator: (val) => val!.isEmpty
+                                          ? 'Enter option text'
+                                          : null,
+                                    ),
                                   ),
-                                  validator: (val) =>
-                                      val!.isEmpty ? 'Enter option text' : null,
-                                ),
+                                  Radio<int>(value: index),
+                                ],
                               ),
-                              Radio<int>(
-                                value: index,
-                                groupValue: correctAnswerIndex,
-                                onChanged: (value) {
-                                  setDialogState(() {
-                                    correctAnswerIndex = value;
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
+                            );
+                          }),
+                        ),
+                      ),
                       if (correctAnswerIndex == null)
                         const Padding(
                           padding: EdgeInsets.only(top: 8.0),
@@ -98,29 +150,50 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
               ),
               actions: [
                 TextButton(
-                  child: const Text('Cancel'),
                   onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  child: const Text('Save'),
-                  onPressed: () {
-                    if (formKey.currentState!.validate() &&
-                        correctAnswerIndex != null) {
-                      final newQuestion = QuizQuestion(
-                        id: existingQuestion?.id ?? const Uuid().v4(),
-                        questionText: questionText,
-                        options: optionControllers.map((c) => c.text).toList(),
-                        correctAnswerIndex: correctAnswerIndex!,
-                      );
+                  onPressed: isUploading
+                      ? null
+                      : () async {
+                          if (formKey.currentState!.validate() &&
+                              correctAnswerIndex != null) {
+                            setDialogState(() => isUploading = true);
+                            String? finalImageUrl = imageUrl;
 
-                      _quizzesCollection
-                          .doc('level1')
-                          .collection('questions')
-                          .doc(newQuestion.id)
-                          .set(newQuestion.toMap());
-                      Navigator.pop(context);
-                    }
-                  },
+                            if (pickedImage != null) {
+                              finalImageUrl = await _uploadService.uploadImage(
+                                pickedImage!,
+                              );
+                            }
+
+                            final newQuestion = QuizQuestion(
+                              id: existingQuestion?.id ?? const Uuid().v4(),
+                              questionText: questionText,
+                              options: optionControllers
+                                  .map((c) => c.text)
+                                  .toList(),
+                              correctAnswerIndex: correctAnswerIndex!,
+                              imageUrl: finalImageUrl,
+                            );
+
+                            await _quizzesCollection
+                                .doc('level1')
+                                .collection('questions')
+                                .doc(newQuestion.id)
+                                .set(newQuestion.toMap());
+
+                            // Check if the widget is still mounted before using context
+                            if (mounted) {
+                              // ignore: use_build_context_synchronously
+                              Navigator.pop(context);
+                            }
+                          }
+                        },
+                  child: isUploading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('Save'),
                 ),
               ],
             );
@@ -175,13 +248,16 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
                 itemBuilder: (context, index) {
                   final question = questions[index];
                   return Card(
-                    // FIX: Replaced deprecated withOpacity
-                    color: Colors.white.withAlpha((0.9 * 255).round()),
+                    // Updated from withOpacity to withValues for Flutter 3.27+
+                    color: Colors.white.withValues(alpha: 0.9),
                     margin: const EdgeInsets.symmetric(
                       horizontal: 10,
                       vertical: 5,
                     ),
                     child: ListTile(
+                      leading: question.imageUrl != null
+                          ? const Icon(Icons.image, color: Colors.blue)
+                          : null,
                       title: Text(
                         question.questionText,
                         style: const TextStyle(color: Colors.black),
@@ -228,10 +304,10 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
             child: FloatingActionButton(
               onPressed: () => _showQuestionDialog(),
               elevation: 0,
-              // FIX: Replaced deprecated withOpacity
+              // Updated from withAlpha to withValues for Flutter 3.27+
               backgroundColor: Theme.of(
                 context,
-              ).primaryColor.withAlpha((0.9 * 255).round()),
+              ).primaryColor.withValues(alpha: 0.9),
               child: const Icon(Icons.add),
             ),
           ),

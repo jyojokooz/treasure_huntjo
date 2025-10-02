@@ -59,21 +59,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
         title: Text(_titles[_selectedIndex]),
         automaticallyImplyLeading: false,
       ),
-      // REMOVED: The old solid background color.
-      // backgroundColor: Colors.orange.shade50,
-
-      // NEW: The body is now a Container which holds our background image.
+      backgroundColor: Colors.orange.shade50,
       body: Container(
         decoration: const BoxDecoration(
           image: DecorationImage(
-            // Use the path to the image you added in Step 1.
             image: AssetImage('assets/images/admin_background.png'),
-            // This makes the image cover the entire screen.
             fit: BoxFit.cover,
           ),
         ),
-        // The PageView is now the child of the container, so it appears
-        // on top of the background image.
         child: PageView(
           controller: _pageController,
           onPageChanged: (index) {
