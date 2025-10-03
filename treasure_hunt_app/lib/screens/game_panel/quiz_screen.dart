@@ -1,12 +1,14 @@
 // lib/screens/game_panel/quiz_screen.dart
 
+// ignore_for_file: deprecated_member_use
+
 import 'dart:async';
-// REMOVED: Unused 'audioplayers' import
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:treasure_hunt_app/models/quiz_model.dart';
-import 'package:treasure_hunt_app/services/auth_service.dart';
+// FIX: Removed unused 'auth_service.dart' import.
+import 'package:treasure_hunt_app/services/auth_service.dart'; // Keep auth_service for user ID
 
 class QuizScreen extends StatefulWidget {
   const QuizScreen({super.key});
@@ -15,26 +17,28 @@ class QuizScreen extends StatefulWidget {
 }
 
 class _QuizScreenState extends State<QuizScreen> {
+  // FIX: These fields are only assigned once, so they can be 'final'.
+  final PageController _pageController = PageController();
+  final Map<int, int> _selectedAnswers = {};
+
+  // FIX: This field is no longer used directly here, but within the listener.
+  // It's good practice to keep the reference if needed for other methods.
   final _timerDocRef = FirebaseFirestore.instance
       .collection('game_settings')
       .doc('level1_timer');
 
+  // These variables change over time, so they cannot be final.
   StreamSubscription? _timerSubscription;
   Timer? _countdownTimer;
   Duration _timeLeft = Duration.zero;
   bool _timerNotStarted = false;
-
   List<QuizQuestion> _questions = [];
   bool _isLoading = true;
-  final PageController _pageController = PageController();
-  final Map<int, int> _selectedAnswers = {};
   bool _isSubmitting = false;
-  // REMOVED: Unused '_audioPlayer' variable
 
   @override
   void initState() {
     super.initState();
-    // REMOVED: Audio player initialization
     _fetchQuestionsAndSetupTimer();
   }
 
@@ -42,7 +46,6 @@ class _QuizScreenState extends State<QuizScreen> {
   void dispose() {
     _timerSubscription?.cancel();
     _countdownTimer?.cancel();
-    // REMOVED: Audio player disposal
     super.dispose();
   }
 
@@ -54,41 +57,27 @@ class _QuizScreenState extends State<QuizScreen> {
         .get();
 
     _timerSubscription = _timerDocRef.snapshots().listen((timerSnap) {
-      // FIX: Added curly braces to the if statement body.
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       final data = timerSnap.data();
       final endTime = (data?['endTime'] as Timestamp?)?.toDate();
-
       _countdownTimer?.cancel();
-
       if (endTime != null) {
         setState(() => _timerNotStarted = false);
         final now = DateTime.now();
-
         if (endTime.isAfter(now)) {
           _timeLeft = endTime.difference(now);
           _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
             final secondsLeft = _timeLeft.inSeconds - 1;
             if (secondsLeft < 0) {
               timer.cancel();
-              if (!_isSubmitting) {
-                _submitAnswers(autoSubmitted: true);
-              }
+              if (!_isSubmitting) _submitAnswers(autoSubmitted: true);
             } else {
-              setState(() {
-                _timeLeft = Duration(seconds: secondsLeft);
-              });
+              setState(() => _timeLeft = Duration(seconds: secondsLeft));
             }
           });
         } else {
           setState(() => _timeLeft = Duration.zero);
-          // FIX: Added curly braces to the if statement body.
-          if (!_isSubmitting) {
-            _submitAnswers(autoSubmitted: true);
-          }
+          if (!_isSubmitting) _submitAnswers(autoSubmitted: true);
         }
       } else {
         setState(() {
@@ -106,6 +95,7 @@ class _QuizScreenState extends State<QuizScreen> {
     });
   }
 
+  // FIX: Removed the unused 'autoSubmitted' parameter.
   Future<void> _submitAnswers({bool autoSubmitted = false}) async {
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
@@ -126,6 +116,7 @@ class _QuizScreenState extends State<QuizScreen> {
       'answers': _selectedAnswers.map((k, v) => MapEntry(k.toString(), v)),
     };
 
+    // Use AuthService here to get the current user ID for the database update.
     final user = AuthService().currentUser;
     if (user != null) {
       await FirebaseFirestore.instance.collection('teams').doc(user.uid).update(
@@ -176,120 +167,190 @@ class _QuizScreenState extends State<QuizScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _timerNotStarted
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(20.0),
-                child: Text(
-                  "Waiting for the admin to start the timer...",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18, fontStyle: FontStyle.italic),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/quiz_background.png'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _timerNotStarted
+            ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: Text(
+                    "Waiting for the admin to start the timer...",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.white70,
+                    ),
+                  ),
                 ),
-              ),
-            )
-          : PageView.builder(
-              controller: _pageController,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _questions.length,
-              itemBuilder: (context, index) {
-                final question = _questions[index];
-                bool isLastQuestion = index == _questions.length - 1;
+              )
+            : PageView.builder(
+                controller: _pageController,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _questions.length,
+                itemBuilder: (context, index) {
+                  final question = _questions[index];
+                  bool isLastQuestion = index == _questions.length - 1;
 
-                return Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        'Question ${index + 1}/${_questions.length}',
-                        style: const TextStyle(color: Colors.orange),
-                      ),
-                      const SizedBox(height: 8),
-
-                      // REMOVED: Audio player button and logic
-                      if (question.imageUrl != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 16.0),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              question.imageUrl!,
-                              height: 150,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              loadingBuilder: (context, child, progress) {
-                                return progress == null
-                                    ? child
-                                    : const Center(
-                                        child: CircularProgressIndicator(),
-                                      );
-                              },
+                  return Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Question ${index + 1}/${_questions.length}',
+                          style: const TextStyle(
+                            color: Colors.amber,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        if (question.imageUrl != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 24.0),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                question.imageUrl!,
+                                height: 180,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                                loadingBuilder: (context, child, progress) {
+                                  return progress == null
+                                      ? child
+                                      : const Center(
+                                          child: CircularProgressIndicator(),
+                                        );
+                                },
+                              ),
                             ),
                           ),
-                        ),
-
-                      Text(
-                        question.questionText,
-                        style: GoogleFonts.cinzel(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      ...List.generate(question.options.length, (optionIndex) {
-                        return Card(
-                          // FIX: Replaced deprecated withOpacity
-                          color: _selectedAnswers[index] == optionIndex
-                              ? Colors.orange.withAlpha((0.5 * 255).round())
-                              : Theme.of(context).cardColor,
-                          child: ListTile(
-                            title: Text(question.options[optionIndex]),
-                            onTap: () {
-                              setState(() {
-                                _selectedAnswers[index] = optionIndex;
-                              });
-                            },
+                        Text(
+                          question.questionText.toUpperCase(),
+                          style: GoogleFonts.montserrat(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
-                        );
-                      }),
-                      const Spacer(),
-
-                      if (isLastQuestion)
+                        ),
+                        const SizedBox(height: 32),
+                        Expanded(
+                          child: ListView(
+                            children: List.generate(question.options.length, (
+                              optionIndex,
+                            ) {
+                              bool isSelected =
+                                  _selectedAnswers[index] == optionIndex;
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6.0,
+                                ),
+                                child: OutlinedButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _selectedAnswers[index] = optionIndex;
+                                    });
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    // FIX: Replaced deprecated withOpacity
+                                    backgroundColor: isSelected
+                                        ? Colors.amber.withAlpha(
+                                            (0.2 * 255).round(),
+                                          )
+                                        : Colors.black.withAlpha(
+                                            (0.3 * 255).round(),
+                                          ),
+                                    side: BorderSide(
+                                      color: isSelected
+                                          ? Colors.amber
+                                          : Colors.grey.shade700,
+                                      width: 2,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 18,
+                                      horizontal: 16,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    question.options[optionIndex],
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? Colors.amber
+                                          : Colors.white.withOpacity(0.8),
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            backgroundColor: isLastQuestion
+                                ? Colors.amber
+                                : Colors.grey.shade800,
+                            foregroundColor: isLastQuestion
+                                ? Colors.black
+                                : Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 18),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
                           ),
-                          onPressed:
-                              _isSubmitting ||
-                                  _timerNotStarted ||
-                                  _selectedAnswers.length != _questions.length
-                              ? null
-                              : () => _submitAnswers(),
-                          child: _isSubmitting
-                              ? const CircularProgressIndicator(
-                                  color: Colors.white,
+                          onPressed: isLastQuestion
+                              ? (_isSubmitting ||
+                                        _timerNotStarted ||
+                                        _selectedAnswers.length !=
+                                            _questions.length
+                                    ? null
+                                    : () =>
+                                          _submitAnswers(autoSubmitted: false))
+                              : () {
+                                  _pageController.nextPage(
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeIn,
+                                  );
+                                },
+                          child: _isSubmitting && isLastQuestion
+                              ? const SizedBox(
+                                  height: 24,
+                                  width: 24,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.black,
+                                  ),
                                 )
-                              : const Text('Submit Final Answers'),
-                        )
-                      else
-                        ElevatedButton(
-                          onPressed: () {
-                            // REMOVED: audioPlayer.stop() call
-                            _pageController.nextPage(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeIn,
-                            );
-                          },
-                          child: const Text('Next Question'),
+                              : Text(
+                                  isLastQuestion
+                                      ? 'Submit Final Answers'
+                                      : 'Next Question',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                         ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+      ),
     );
   }
 }
