@@ -1,96 +1,250 @@
+// lib/screens/admin_panel/manage_levels_view.dart
+
+// ignore_for_file: deprecated_member_use
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+// FIX: Corrected the import path from 'package.' to 'package:' to find the services library.
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
-class ManageLevelsView extends StatelessWidget {
+class ManageLevelsView extends StatefulWidget {
   const ManageLevelsView({super.key});
 
-  // Helper to get a reference to our single settings document.
-  DocumentReference get _levelsDocRef =>
-      FirebaseFirestore.instance.collection('game_settings').doc('levels');
+  @override
+  State<ManageLevelsView> createState() => _ManageLevelsViewState();
+}
+
+class _ManageLevelsViewState extends State<ManageLevelsView> {
+  final _levelsDocRef = FirebaseFirestore.instance
+      .collection('game_settings')
+      .doc('levels');
+  final _timerDocRef = FirebaseFirestore.instance
+      .collection('game_settings')
+      .doc('level1_timer');
+  final _durationController = TextEditingController(text: '3');
+
+  @override
+  void dispose() {
+    _durationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _startLevel1() async {
+    final minutes = int.tryParse(_durationController.text);
+    if (minutes == null || minutes <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please enter a valid duration in minutes.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    final batch = FirebaseFirestore.instance.batch();
+
+    batch.set(_levelsDocRef, {
+      'isLevel1Unlocked': true,
+    }, SetOptions(merge: true));
+
+    final endTime = DateTime.now().add(Duration(minutes: minutes));
+    batch.set(_timerDocRef, {
+      'durationMinutes': minutes,
+      'endTime': Timestamp.fromDate(endTime),
+    });
+
+    await batch.commit();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Level 1 has been started!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  Future<void> _stopLevel1() async {
+    final batch = FirebaseFirestore.instance.batch();
+
+    batch.set(_levelsDocRef, {
+      'isLevel1Unlocked': false,
+    }, SetOptions(merge: true));
+    batch.set(_timerDocRef, {'endTime': null}, SetOptions(merge: true));
+
+    await batch.commit();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Level 1 has been stopped and locked.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: _levelsDocRef.snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          _buildCard(
+            title: 'Level 1: Mind Spark',
+            child: StreamBuilder<DocumentSnapshot>(
+              stream: _timerDocRef.snapshots(),
+              builder: (context, timerSnapshot) {
+                if (!timerSnapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-        // Get the data, or create an empty map if the document doesn't exist yet.
-        final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
+                // FIX: Removed unnecessary cast.
+                final timerData =
+                    timerSnapshot.data!.data() as Map<String, dynamic>? ?? {};
+                final endTime = (timerData['endTime'] as Timestamp?)?.toDate();
+                final bool isTimerRunning =
+                    endTime != null && endTime.isAfter(DateTime.now());
 
-        // Determine the lock status for each level, defaulting to 'false' (locked).
-        final isLevel1Unlocked = data['isLevel1Unlocked'] ?? false;
-        final isLevel2Unlocked = data['isLevel2Unlocked'] ?? false;
-        final isLevel3Unlocked = data['isLevel3Unlocked'] ?? false;
-
-        return ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.only(bottom: 16.0),
-                child: Text(
-                  'Global Level Controls',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-              ),
+                return Column(
+                  children: [
+                    TextField(
+                      controller: _durationController,
+                      decoration: const InputDecoration(
+                        labelText: 'Duration in Minutes',
+                        border: OutlineInputBorder(),
+                        labelStyle: TextStyle(color: Colors.white70),
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                      keyboardType: TextInputType.number,
+                      // This class is now correctly defined because of the fixed import.
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      enabled: !isTimerRunning,
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        icon: Icon(
+                          isTimerRunning
+                              ? Icons.stop_circle_outlined
+                              : Icons.play_circle_outline,
+                        ),
+                        label: Text(
+                          isTimerRunning
+                              ? 'Stop & Lock Level 1'
+                              : 'Start Level 1',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isTimerRunning
+                              ? Colors.redAccent
+                              : Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        onPressed: isTimerRunning ? _stopLevel1 : _startLevel1,
+                      ),
+                    ),
+                    if (isTimerRunning)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          'Level 1 is LIVE. Ends at ${DateFormat.jm().format(endTime)}',
+                          style: const TextStyle(
+                            fontStyle: FontStyle.italic,
+                            color: Colors.greenAccent,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
-            _buildLevelToggleRow(
-              'Level 1: Mind Spark',
-              isLevel1Unlocked,
-              () => _levelsDocRef.set(
-                {'isLevel1Unlocked': !isLevel1Unlocked},
-                SetOptions(merge: true), // Creates doc if it doesn't exist
-              ),
+          ),
+          const SizedBox(height: 20),
+          _buildCard(
+            title: 'Other Levels',
+            child: StreamBuilder<DocumentSnapshot>(
+              stream: _levelsDocRef.snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final data =
+                    snapshot.data!.data() as Map<String, dynamic>? ?? {};
+                return Column(
+                  children: [
+                    _buildLevelToggleRow(
+                      'Level 2: Code Breaker',
+                      data['isLevel2Unlocked'] ?? false,
+                      'isLevel2Unlocked',
+                    ),
+                    _buildLevelToggleRow(
+                      'Level 3: The Final Chase',
+                      data['isLevel3Unlocked'] ?? false,
+                      'isLevel3Unlocked',
+                    ),
+                  ],
+                );
+              },
             ),
-            _buildLevelToggleRow(
-              'Level 2: Code Breaker',
-              isLevel2Unlocked,
-              () => _levelsDocRef.set({
-                'isLevel2Unlocked': !isLevel2Unlocked,
-              }, SetOptions(merge: true)),
-            ),
-            _buildLevelToggleRow(
-              'Level 3: The Final Chase',
-              isLevel3Unlocked,
-              () => _levelsDocRef.set({
-                'isLevel3Unlocked': !isLevel3Unlocked,
-              }, SetOptions(merge: true)),
-            ),
-          ],
-        );
-      },
+          ),
+        ],
+      ),
     );
   }
 
-  // A reusable widget for each row in the control panel.
-  Widget _buildLevelToggleRow(
-    String title,
-    bool isUnlocked,
-    VoidCallback onPressed,
-  ) {
+  Widget _buildCard({required String title, required Widget child}) {
     return Card(
-      child: ListTile(
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      color: Colors.white.withAlpha((0.1 * 255).round()),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              isUnlocked ? Icons.lock_open_rounded : Icons.lock_rounded,
-              color: isUnlocked ? Colors.green : Colors.red,
-            ),
             Text(
-              isUnlocked ? 'UNLOCKED' : 'LOCKED',
-              style: TextStyle(
-                color: isUnlocked ? Colors.green : Colors.red,
-                fontSize: 10,
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
             ),
+            const Divider(color: Colors.white24, height: 20),
+            child,
           ],
         ),
-        onTap: onPressed,
+      ),
+    );
+  }
+
+  Widget _buildLevelToggleRow(String title, bool isUnlocked, String fieldName) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      trailing: Switch.adaptive(
+        value: isUnlocked,
+        onChanged: (value) =>
+            _levelsDocRef.set({fieldName: value}, SetOptions(merge: true)),
+        // FIX: Replaced deprecated 'activeColor' with modern properties.
+        activeTrackColor: Colors.amber.shade700,
+        inactiveTrackColor: Colors.grey.shade800,
+        thumbColor: MaterialStateProperty.resolveWith((states) {
+          if (states.contains(MaterialState.selected)) {
+            return Colors.amber;
+          }
+          return Colors.grey.shade400;
+        }),
       ),
     );
   }
