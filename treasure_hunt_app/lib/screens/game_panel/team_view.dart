@@ -1,135 +1,138 @@
+// lib/screens/game_panel/team_view.dart
+
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
-// FIX 1: Corrected the import path from '.' to ':' to find the Team model.
 import 'package:treasure_hunt_app/models/team_model.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:ui'; // Needed for the frosted glass effect (ImageFilter)
 
 class TeamView extends StatelessWidget {
   final Team team;
   const TeamView({super.key, required this.team});
 
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 10.0),
-      children: [
-        // --- TEAM & COLLEGE HEADER ---
-        Container(
-          padding: const EdgeInsets.all(16.0),
+  // This is a reusable helper widget for creating the stylized "frosted glass"
+  // effect for each member in the list.
+  Widget _buildMemberCard(String memberName) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: BackdropFilter(
+        // The ImageFilter.blur creates the frosted glass effect.
+        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          margin: const EdgeInsets.only(bottom: 10),
           decoration: BoxDecoration(
-            // FIX 2: Replaced deprecated withOpacity with withAlpha
-            color: Colors.black.withAlpha((0.2 * 255).round()),
+            // A very low opacity color allows the background to show through.
+            color: Colors.white.withOpacity(0.05),
             borderRadius: BorderRadius.circular(12),
+            // A subtle border helps define the edges of the glass card.
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
           ),
-          child: Column(
-            children: [
-              Text(
-                team.teamName.toUpperCase(),
-                textAlign: TextAlign.center,
-                style: GoogleFonts.cinzel(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange.shade100,
-                  letterSpacing: 1.5,
-                  shadows: [
-                    Shadow(
-                      // FIX 3: Replaced deprecated withOpacity
-                      color: Colors.orange.shade900.withAlpha(
-                        (0.7 * 255).round(),
-                      ),
-                      blurRadius: 10,
-                      offset: const Offset(2, 2),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.school_outlined,
-                    color: Colors.white.withAlpha(180),
-                    size: 16,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    team.collegeName,
-                    style: GoogleFonts.imFellEnglish(
-                      fontSize: 16,
-                      color: Colors.white.withAlpha(200),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 20),
-
-        // --- THEMATIC DIVIDER ---
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // FIX 4: Replaced deprecated withOpacity
               Icon(
-                Icons.shield_moon_outlined,
-                color: Colors.orange.shade200.withAlpha((0.5 * 255).round()),
+                Icons.person_outline,
+                color: Colors.amber.shade300,
+                size: 22,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Text(
-                'The Crew',
+                memberName,
                 style: GoogleFonts.cinzel(
                   fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange.shade200,
-                ),
-              ),
-              const SizedBox(width: 10),
-              // FIX 5: Replaced deprecated withOpacity
-              Icon(
-                Icons.shield_moon_outlined,
-                color: Colors.orange.shade200.withAlpha((0.5 * 255).round()),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 15),
-
-        // --- MEMBERS LIST ---
-        ...team.members.map(
-          (member) => Card(
-            elevation: 4,
-            // FIX 6: Replaced deprecated withOpacity
-            color: Colors.white.withAlpha((0.08 * 255).round()),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: BorderSide(
-                // FIX 7: Replaced deprecated withOpacity
-                color: Colors.white.withAlpha((0.2 * 255).round()),
-                width: 1,
-              ),
-            ),
-            margin: const EdgeInsets.symmetric(vertical: 6.0),
-            child: ListTile(
-              leading: Icon(
-                Icons.person_outline,
-                color: Colors.orange.shade200,
-                size: 28,
-              ),
-              title: Text(
-                member,
-                style: GoogleFonts.imFellEnglish(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w600,
                   color: Colors.white,
                 ),
               ),
-            ),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // A ListView ensures the content can scroll if there are many members
+    // or if the screen is small, preventing overflow errors.
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
+      children: [
+        // --- Team Name Header ---
+        Text(
+          team.teamName.toUpperCase(),
+          textAlign: TextAlign.center,
+          style: GoogleFonts.cinzel(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 1.5,
+            // This list of shadows creates the golden glow effect.
+            shadows: [
+              Shadow(color: Colors.amber.withOpacity(0.8), blurRadius: 15),
+              const Shadow(
+                color: Colors.black,
+                blurRadius: 2,
+                offset: Offset(1, 1),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // --- College Name ---
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.school_outlined,
+              color: Colors.white.withOpacity(0.7),
+              size: 16,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              team.collegeName,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white.withOpacity(0.7),
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 25),
+
+        // --- "THE CREW" Thematic Divider ---
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.shield_moon_outlined,
+              color: Colors.amber.withOpacity(0.6),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'THE CREW',
+              style: GoogleFonts.cinzel(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.amber.withOpacity(0.9),
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Icon(
+              Icons.shield_moon_outlined,
+              color: Colors.amber.withOpacity(0.6),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+
+        // --- Members List ---
+        // We map over the list of member names and generate a styled card for each one.
+        ...team.members.map((member) => _buildMemberCard(member)),
       ],
     );
   }

@@ -1,15 +1,18 @@
 // lib/screens/admin_panel/manage_quizzes_view.dart
 
-// FIX: Corrected the import from 'dart.io' to 'dart:io'.
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
+
+// FIX: Corrected import from 'dart.io' to 'dart:io'
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
+// FIX: Using correct relative paths for project files
 import '../../models/quiz_model.dart';
 import '../../services/image_upload_service.dart';
-import 'level1_leaderboard_view.dart';
+import '../game_panel/level1_leaderboard_view.dart';
 
 class ManageQuizzesView extends StatefulWidget {
   const ManageQuizzesView({super.key});
@@ -51,9 +54,10 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
               final XFile? image = await picker.pickImage(
                 source: ImageSource.gallery,
               );
-              // FIX: Added curly braces to the if statement body.
               if (image != null) {
-                setDialogState(() => pickedImage = image);
+                setDialogState(() {
+                  pickedImage = image;
+                });
               }
             }
 
@@ -86,10 +90,12 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
                           if (imageUrl != null || pickedImage != null)
                             IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => setDialogState(() {
-                                pickedImage = null;
-                                imageUrl = null;
-                              }),
+                              onPressed: () {
+                                setDialogState(() {
+                                  pickedImage = null;
+                                  imageUrl = null;
+                                });
+                              },
                             ),
                         ],
                       ),
@@ -118,14 +124,12 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
                             ),
                             Radio<int>(
                               value: index,
-                              // ignore: deprecated_member_use
-                              // ignore: deprecated_member_use
-                              // ignore: deprecated_member_use
                               groupValue: correctAnswerIndex,
-                              // ignore: deprecated_member_use
-                              onChanged: (value) => setDialogState(
-                                () => correctAnswerIndex = value,
-                              ),
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  correctAnswerIndex = value;
+                                });
+                              },
                             ),
                           ],
                         );
@@ -178,9 +182,8 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
                                 .doc(newQuestion.id)
                                 .set(newQuestion.toMap());
 
-                            // FIX: Guarded the context usage with a 'mounted' check.
+                            // FIX: Guard the context usage with a 'mounted' check.
                             if (mounted) {
-                              // ignore: use_build_context_synchronously
                               Navigator.pop(context);
                             }
                           }
@@ -223,7 +226,8 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const Level1LeaderboardView(),
+                          builder: (context) =>
+                              const Level1LeaderboardView(isAdminView: true),
                         ),
                       );
                     },
@@ -241,18 +245,12 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
                       return const Center(child: CircularProgressIndicator());
                     }
                     if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.only(bottom: 90.0),
-                        child: Center(
-                          child: Text(
-                            'No questions found. Add one!',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              shadows: [
-                                Shadow(blurRadius: 4, color: Colors.black54),
-                              ],
-                            ),
+                      return Center(
+                        child: Text(
+                          'No questions found. Add one!',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.7),
+                            fontSize: 16,
                           ),
                         ),
                       );
@@ -280,7 +278,10 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
                           ),
                           child: ListTile(
                             leading: question.imageUrl != null
-                                ? const Icon(Icons.image, color: Colors.blue)
+                                ? const Icon(
+                                    Icons.image,
+                                    color: Colors.blueAccent,
+                                  )
                                 : null,
                             title: Text(
                               question.questionText,
@@ -288,7 +289,9 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
                             ),
                             subtitle: Text(
                               'Correct: ${question.options[question.correctAnswerIndex]}',
-                              style: const TextStyle(color: Colors.black54),
+                              style: TextStyle(
+                                color: Colors.black.withOpacity(0.7),
+                              ),
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -305,7 +308,7 @@ class _ManageQuizzesViewState extends State<ManageQuizzesView> {
                                 IconButton(
                                   icon: const Icon(
                                     Icons.delete_outline,
-                                    color: Colors.red,
+                                    color: Colors.redAccent,
                                   ),
                                   onPressed: () => _quizzesCollection
                                       .doc('level1')

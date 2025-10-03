@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:treasure_hunt_app/models/team_model.dart';
 import 'package:treasure_hunt_app/screens/game_panel/clues_view.dart';
-import 'package:treasure_hunt_app/screens/game_panel/leaderboard_view.dart';
+// Import the new shared leaderboard view from its correct location.
+import 'package:treasure_hunt_app/screens/game_panel/level1_leaderboard_view.dart';
 import 'package:treasure_hunt_app/screens/game_panel/team_view.dart';
 import 'package:treasure_hunt_app/services/auth_service.dart';
 import 'package:treasure_hunt_app/widgets/game_nav_bar.dart';
@@ -20,28 +21,30 @@ class _GamerDashboardState extends State<GamerDashboard> {
   int _selectedIndex = 0;
 
   // A list of all the different pages/views the user can switch between.
-  // It's declared as 'late final' because it's initialized in initState.
   late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
-    // Initialize the list of pages here. This is done in initState so we can
-    // access `widget.team` and pass the team data to the relevant child widgets.
+    // Initialize the list of pages here to pass the required 'team' data.
     _pages = [
-      // The CluesView needs team data to check for quiz completion status.
-      CluesView(team: widget.team), // Index 0
-      // Placeholder for the Map view.
+      // Index 0: The CluesView, which needs team data to check submission status.
+      CluesView(team: widget.team),
+
+      // Index 1: Placeholder for the Map view.
       const Center(
         child: Text(
           'Map View - Coming Soon!',
           style: TextStyle(color: Colors.white70),
         ),
-      ), // Index 1
-      // The LeaderboardView shows rankings for all teams.
-      const LeaderboardView(), // Index 2
-      // The TeamView needs team data to display member names, college, etc.
-      TeamView(team: widget.team), // Index 3
+      ),
+
+      // Index 2: The new shared leaderboard. We explicitly pass 'isAdminView: false'
+      // to ensure the player does not see the "Reset Leaderboard" button.
+      const Level1LeaderboardView(isAdminView: false),
+
+      // Index 3: The TeamView, which needs team data to display member names, etc.
+      TeamView(team: widget.team),
     ];
   }
 
@@ -73,8 +76,7 @@ class _GamerDashboardState extends State<GamerDashboard> {
           ),
         ),
         child: SafeArea(
-          // Padding is carefully calculated to position the content
-          // perfectly inside the transparent area of the frame image.
+          // Padding is calculated to position the content inside the frame.
           child: Padding(
             padding: EdgeInsets.only(
               top: screenSize.height * 0.22,
@@ -86,12 +88,10 @@ class _GamerDashboardState extends State<GamerDashboard> {
               children: [
                 // The main content area that switches between pages.
                 Expanded(
-                  // IndexedStack is efficient for bottom navigation. It keeps all
-                  // pages in the widget tree but only shows the one at the current index.
-                  // This preserves the state of each page when switching tabs.
+                  // IndexedStack efficiently manages the state of each tab.
                   child: IndexedStack(index: _selectedIndex, children: _pages),
                 ),
-                // The forfeit button remains fixed at the bottom of the frame.
+                // The "Forfeit" button at the bottom.
                 TextButton.icon(
                   icon: Icon(Icons.exit_to_app, color: Colors.red.shade300),
                   label: Text(
