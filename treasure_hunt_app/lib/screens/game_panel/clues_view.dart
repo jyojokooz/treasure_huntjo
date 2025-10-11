@@ -1,4 +1,7 @@
-// lib/screens/game_panel/clues_view.dart
+// ===============================
+// FILE NAME: clues_view.dart
+// FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\game_panel\clues_view.dart
+// ===============================
 
 // ignore_for_file: deprecated_member_use
 
@@ -6,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:treasure_hunt_app/models/team_model.dart';
+import 'package:treasure_hunt_app/screens/game_panel/level2_puzzle_screen.dart';
 import 'package:treasure_hunt_app/screens/game_panel/quiz_screen.dart';
 
 class CluesView extends StatelessWidget {
@@ -23,6 +27,7 @@ class CluesView extends StatelessWidget {
     required bool isUnlocked,
     required bool isCompleted,
     required VoidCallback onPressed,
+    required Map<String, dynamic>? submissionData,
   }) {
     bool isLocked = !isUnlocked;
     IconData iconData;
@@ -40,12 +45,13 @@ class CluesView extends StatelessWidget {
       topText = 'LEVEL $levelNumber';
       bottomText = 'COMPLETED';
       finalOnPressed = () {
-        final score = team.level1Submission?['score'] ?? 0;
-        final total = team.level1Submission?['totalQuestions'] ?? 0;
+        // Show score for the completed level
+        final score = submissionData?['score'] ?? 0;
+        final total = submissionData?['totalQuestions'] ?? 0;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'You completed this level with a score of $score/$total.',
+              'You completed Level $levelNumber with a score of $score/$total.',
             ),
           ),
         );
@@ -138,13 +144,13 @@ class CluesView extends StatelessWidget {
             final isLevel3Unlocked = data['isLevel3Unlocked'] ?? false;
 
             final hasCompletedLevel1 = team.level1Submission != null;
-            final hasCompletedLevel2 = false; // Placeholder
-            final hasCompletedLevel3 = false; // Placeholder
+            final hasCompletedLevel2 = team.level2Submission != null;
+            final hasCompletedLevel3 = false; // Placeholder for future use
 
-            // The content is now wrapped in a Column to hold the heading and the level buttons.
+            // The content is wrapped in a Column to hold the heading and the level buttons.
             return Column(
               children: [
-                // NEW: A beautiful, stylized heading for the dashboard.
+                // A beautiful, stylized heading for the dashboard.
                 Text(
                   'Treasure Hunt Dashboard',
                   textAlign: TextAlign.center,
@@ -169,13 +175,14 @@ class CluesView extends StatelessWidget {
                 const SizedBox(
                   height: 25,
                 ), // Spacing between heading and buttons
-                // The level buttons remain the same.
+                // Level 1 Button
                 _buildLevelButton(
                   context: context,
                   levelNumber: 1,
                   levelName: 'Mind Spark',
                   isUnlocked: isLevel1Unlocked,
                   isCompleted: hasCompletedLevel1,
+                  submissionData: team.level1Submission,
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -186,23 +193,32 @@ class CluesView extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: 15),
+                // Level 2 Button
                 _buildLevelButton(
                   context: context,
                   levelNumber: 2,
                   levelName: 'Code Breaker',
-                  isUnlocked: isLevel2Unlocked,
+                  isUnlocked: isLevel2Unlocked && team.isEligibleForLevel2,
                   isCompleted: hasCompletedLevel2,
+                  submissionData: team.level2Submission,
                   onPressed: () {
-                    // TODO: Add navigation to Level 2
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const Level2PuzzleScreen(),
+                      ),
+                    );
                   },
                 ),
                 const SizedBox(height: 15),
+                // Level 3 Button
                 _buildLevelButton(
                   context: context,
                   levelNumber: 3,
                   levelName: 'The Final Chase',
                   isUnlocked: isLevel3Unlocked,
                   isCompleted: hasCompletedLevel3,
+                  submissionData: null, // No submission data for Level 3 yet
                   onPressed: () {
                     // TODO: Add navigation to Level 3
                   },

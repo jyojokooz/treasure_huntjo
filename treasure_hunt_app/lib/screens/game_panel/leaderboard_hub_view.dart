@@ -1,16 +1,21 @@
-// lib/screens/game_panel/leaderboard_hub_view.dart
+// ===============================
+// FILE NAME: leaderboard_hub_view.dart
+// FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\game_panel\leaderboard_hub_view.dart
+// ===============================
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:treasure_hunt_app/screens/game_panel/level_leaderboard_view.dart';
+import 'package:treasure_hunt_app/screens/game_panel/level1_leaderboard_view.dart';
+import 'package:treasure_hunt_app/screens/game_panel/level2_leaderboard_view.dart';
 
 class LeaderboardHubView extends StatelessWidget {
   const LeaderboardHubView({super.key});
 
+  // A reusable helper widget to create styled buttons for each leaderboard.
   Widget _buildLevelButton(
     BuildContext context,
     String title,
-    String levelId,
+    Widget destinationPage,
     bool enabled,
   ) {
     return Padding(
@@ -26,12 +31,11 @@ class LeaderboardHubView extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
+        // The button is only clickable if 'enabled' is true.
         onPressed: enabled
             ? () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => LevelLeaderboardView(levelId: levelId),
-                ),
+                MaterialPageRoute(builder: (context) => destinationPage),
               )
             : null,
         child: Text(
@@ -50,6 +54,7 @@ class LeaderboardHubView extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Main title for the hub screen.
           Text(
             'Leaderboards',
             textAlign: TextAlign.center,
@@ -57,7 +62,6 @@ class LeaderboardHubView extends StatelessWidget {
               fontSize: 28,
               fontWeight: FontWeight.bold,
               color: Colors.white,
-              // FIX: Replaced deprecated withOpacity
               shadows: [
                 Shadow(
                   blurRadius: 10,
@@ -67,9 +71,30 @@ class LeaderboardHubView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 30),
-          _buildLevelButton(context, 'Level 1 Leaderboard', 'level1', true),
-          _buildLevelButton(context, 'Level 2 Leaderboard', 'level2', false),
-          _buildLevelButton(context, 'Level 3 Leaderboard', 'level3', false),
+
+          // Button to navigate to the Level 1 Leaderboard.
+          _buildLevelButton(
+            context,
+            'Level 1 Leaderboard',
+            const Level1LeaderboardView(),
+            true, // Always enabled.
+          ),
+
+          // Button to navigate to the Level 2 Leaderboard.
+          _buildLevelButton(
+            context,
+            'Level 2 Leaderboard',
+            const Level2LeaderboardView(),
+            true, // Now enabled.
+          ),
+
+          // Placeholder button for the future Level 3 Leaderboard.
+          _buildLevelButton(
+            context,
+            'Level 3 Leaderboard',
+            const Scaffold(body: Center(child: Text("Coming Soon!"))),
+            false, // Currently disabled.
+          ),
         ],
       ),
     );

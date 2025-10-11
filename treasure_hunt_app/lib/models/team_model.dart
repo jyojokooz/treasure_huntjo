@@ -1,3 +1,8 @@
+// ===============================
+// FILE NAME: team_model.dart
+// FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\models\team_model.dart
+// ===============================
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Team {
@@ -10,11 +15,11 @@ class Team {
   final String status;
   final String role;
   final DateTime createdAt;
+  final bool isEligibleForLevel2;
 
-  // This field will store the team's submission data for the Level 1 quiz.
-  // It's a map that can contain fields like 'score', 'totalQuestions', and 'submittedAt'.
-  // It is nullable because a team that hasn't played Level 1 won't have this data.
   final Map<String, dynamic>? level1Submission;
+  final Map<String, dynamic>?
+  level2Submission; // NEW: Field for Level 2 results
 
   Team({
     required this.id,
@@ -24,13 +29,13 @@ class Team {
     required this.teamCaptainEmail,
     required this.members,
     required this.status,
-    this.role = 'user', // Default role is 'user'
+    this.role = 'user',
     required this.createdAt,
-    this.level1Submission, // Optional parameter for quiz data
+    this.level1Submission,
+    this.level2Submission, // NEW: Add to constructor
+    this.isEligibleForLevel2 = false,
   });
 
-  // A factory constructor to create a Team instance from a Firestore document map.
-  // This is used whenever you read data from the database.
   factory Team.fromMap(Map<String, dynamic> map) {
     return Team(
       id: map['id'] ?? '',
@@ -41,15 +46,13 @@ class Team {
       members: List<String>.from(map['members'] ?? []),
       status: map['status'] ?? 'pending',
       role: map['role'] ?? 'user',
-      // Firestore stores dates as Timestamps, so we need to convert it.
       createdAt: (map['createdAt'] as Timestamp).toDate(),
-      // Read the submission data. It will be null if the field doesn't exist.
       level1Submission: map['level1Submission'] as Map<String, dynamic>?,
+      level2Submission: map['level2Submission'] as Map<String, dynamic>?, // NEW
+      isEligibleForLevel2: map['isEligibleForLevel2'] ?? false,
     );
   }
 
-  // A method to convert a Team instance into a map.
-  // This is used whenever you write data to the database.
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -61,8 +64,9 @@ class Team {
       'status': status,
       'role': role,
       'createdAt': createdAt,
-      // Write the submission data to the map.
       'level1Submission': level1Submission,
+      'level2Submission': level2Submission, // NEW
+      'isEligibleForLevel2': isEligibleForLevel2,
     };
   }
 }

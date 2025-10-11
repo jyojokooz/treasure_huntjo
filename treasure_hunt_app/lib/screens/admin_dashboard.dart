@@ -1,6 +1,11 @@
-// lib/screens/admin_dashboard.dart
+// ===============================
+// FILE NAME: admin_dashboard.dart
+// FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\admin_dashboard.dart
+// ===============================
 
 import 'package:flutter/material.dart';
+// FIX: Cleaned up and corrected the import statements to be consistent.
+// This resolves both the 'ambiguous_import' and 'creation_with_non_type' errors.
 import 'admin_panel/admin_profile_view.dart';
 import 'admin_panel/manage_levels_view.dart';
 import 'admin_panel/manage_quizzes_view.dart';

@@ -1,3 +1,8 @@
+// ===============================
+// FILE NAME: manage_teams_view.dart
+// FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\admin_panel\manage_teams_view.dart
+// ===============================
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:treasure_hunt_app/models/team_model.dart';
@@ -89,20 +94,11 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
                         // This conditional logic displays the correct action buttons
                         // based on the currently selected filter.
                         trailing: _currentFilter == TeamStatusFilter.pending
-                            ? _buildActionButtons(doc.reference)
-                            : IconButton(
-                                icon: const Icon(
-                                  Icons.undo_rounded,
-                                  color: Colors.amber,
-                                ),
-                                tooltip: 'Move back to Pending',
-                                onPressed: () {
-                                  _showMoveToPendingConfirmation(
-                                    context,
-                                    doc.reference,
-                                    team.teamName,
-                                  );
-                                },
+                            ? _buildPendingActionButtons(doc.reference)
+                            : _buildApprovedActionButtons(
+                                context,
+                                doc.reference,
+                                team,
                               ),
                       ),
                     );
@@ -196,7 +192,7 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
   }
 
   // Builds the approve and reject icon buttons for the pending list.
-  Widget _buildActionButtons(DocumentReference docRef) {
+  Widget _buildPendingActionButtons(DocumentReference docRef) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -209,6 +205,47 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
           icon: const Icon(Icons.cancel, color: Colors.red),
           tooltip: 'Reject',
           onPressed: () => docRef.update({'status': 'rejected'}),
+        ),
+      ],
+    );
+  }
+
+  // Builds the controls for the 'Approved' teams list, including the Lvl 2 switch.
+  Widget _buildApprovedActionButtons(
+    BuildContext context,
+    DocumentReference docRef,
+    Team team,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Level 2 eligibility switch
+        Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Lvl 2',
+              style: TextStyle(fontSize: 10, color: Colors.white70),
+            ),
+            Switch(
+              value: team.isEligibleForLevel2,
+              onChanged: (value) {
+                // Updates the 'isEligibleForLevel2' field in Firestore
+                docRef.update({'isEligibleForLevel2': value});
+              },
+              activeThumbColor: Colors.amber,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ],
+        ),
+        const SizedBox(width: 8),
+        // Move back to pending button
+        IconButton(
+          icon: const Icon(Icons.undo_rounded, color: Colors.amber),
+          tooltip: 'Move back to Pending',
+          onPressed: () {
+            _showMoveToPendingConfirmation(context, docRef, team.teamName);
+          },
         ),
       ],
     );

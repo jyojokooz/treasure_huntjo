@@ -1,10 +1,12 @@
-// lib/screens/admin_panel/manage_levels_view.dart
+// ===============================
+// FILE NAME: manage_levels_view.dart
+// FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\admin_panel\manage_levels_view.dart
+// ===============================
 
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-// FIX: Corrected the import path from 'package.' to 'package:' to find the services library.
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
@@ -19,72 +21,116 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
   final _levelsDocRef = FirebaseFirestore.instance
       .collection('game_settings')
       .doc('levels');
-  final _timerDocRef = FirebaseFirestore.instance
+
+  // --- Level 1 References ---
+  final _level1TimerDocRef = FirebaseFirestore.instance
       .collection('game_settings')
       .doc('level1_timer');
-  final _durationController = TextEditingController(text: '3');
+  final _level1DurationController = TextEditingController(text: '3');
+
+  // --- Level 2 References ---
+  final _level2TimerDocRef = FirebaseFirestore.instance
+      .collection('game_settings')
+      .doc('level2_timer');
+  final _level2DurationController = TextEditingController(text: '5');
 
   @override
   void dispose() {
-    _durationController.dispose();
+    _level1DurationController.dispose();
+    _level2DurationController.dispose();
     super.dispose();
   }
 
+  // --- Level 1 Methods ---
   Future<void> _startLevel1() async {
-    final minutes = int.tryParse(_durationController.text);
+    final minutes = int.tryParse(_level1DurationController.text);
     if (minutes == null || minutes <= 0) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please enter a valid duration in minutes.'),
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid duration in minutes.'),
+        ),
+      );
       return;
     }
 
     final batch = FirebaseFirestore.instance.batch();
-
     batch.set(_levelsDocRef, {
       'isLevel1Unlocked': true,
     }, SetOptions(merge: true));
-
     final endTime = DateTime.now().add(Duration(minutes: minutes));
-    batch.set(_timerDocRef, {
+    batch.set(_level1TimerDocRef, {
       'durationMinutes': minutes,
       'endTime': Timestamp.fromDate(endTime),
     });
-
     await batch.commit();
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Level 1 has been started!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Level 1 has been started!'),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
 
   Future<void> _stopLevel1() async {
     final batch = FirebaseFirestore.instance.batch();
-
     batch.set(_levelsDocRef, {
       'isLevel1Unlocked': false,
     }, SetOptions(merge: true));
-    batch.set(_timerDocRef, {'endTime': null}, SetOptions(merge: true));
-
+    batch.set(_level1TimerDocRef, {'endTime': null}, SetOptions(merge: true));
     await batch.commit();
 
-    if (mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Level 1 has been stopped and locked.'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  // --- Level 2 Methods ---
+  Future<void> _startLevel2() async {
+    final minutes = int.tryParse(_level2DurationController.text);
+    if (minutes == null || minutes <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Level 1 has been stopped and locked.'),
-          backgroundColor: Colors.red,
-        ),
+        const SnackBar(content: Text('Please enter a valid duration.')),
       );
+      return;
     }
+
+    final batch = FirebaseFirestore.instance.batch();
+    batch.set(_levelsDocRef, {
+      'isLevel2Unlocked': true,
+    }, SetOptions(merge: true));
+    final endTime = DateTime.now().add(Duration(minutes: minutes));
+    batch.set(_level2TimerDocRef, {
+      'durationMinutes': minutes,
+      'endTime': Timestamp.fromDate(endTime),
+    });
+    await batch.commit();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Level 2 has been started!'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  Future<void> _stopLevel2() async {
+    final batch = FirebaseFirestore.instance.batch();
+    batch.set(_levelsDocRef, {
+      'isLevel2Unlocked': false,
+    }, SetOptions(merge: true));
+    batch.set(_level2TimerDocRef, {'endTime': null}, SetOptions(merge: true));
+    await batch.commit();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Level 2 has been stopped and locked.'),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
 
   @override
@@ -94,78 +140,33 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          // Card for Level 1 Timer
           _buildCard(
             title: 'Level 1: Mind Spark',
-            child: StreamBuilder<DocumentSnapshot>(
-              stream: _timerDocRef.snapshots(),
-              builder: (context, timerSnapshot) {
-                if (!timerSnapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                // FIX: Removed unnecessary cast.
-                final timerData =
-                    timerSnapshot.data!.data() as Map<String, dynamic>? ?? {};
-                final endTime = (timerData['endTime'] as Timestamp?)?.toDate();
-                final bool isTimerRunning =
-                    endTime != null && endTime.isAfter(DateTime.now());
-
-                return Column(
-                  children: [
-                    TextField(
-                      controller: _durationController,
-                      decoration: const InputDecoration(
-                        labelText: 'Duration in Minutes',
-                        border: OutlineInputBorder(),
-                        labelStyle: TextStyle(color: Colors.white70),
-                      ),
-                      style: const TextStyle(color: Colors.white),
-                      keyboardType: TextInputType.number,
-                      // This class is now correctly defined because of the fixed import.
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      enabled: !isTimerRunning,
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        icon: Icon(
-                          isTimerRunning
-                              ? Icons.stop_circle_outlined
-                              : Icons.play_circle_outline,
-                        ),
-                        label: Text(
-                          isTimerRunning
-                              ? 'Stop & Lock Level 1'
-                              : 'Start Level 1',
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isTimerRunning
-                              ? Colors.redAccent
-                              : Colors.green,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        onPressed: isTimerRunning ? _stopLevel1 : _startLevel1,
-                      ),
-                    ),
-                    if (isTimerRunning)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: Text(
-                          'Level 1 is LIVE. Ends at ${DateFormat.jm().format(endTime)}',
-                          style: const TextStyle(
-                            fontStyle: FontStyle.italic,
-                            color: Colors.greenAccent,
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              },
+            child: _buildTimerControls(
+              timerDocRef: _level1TimerDocRef,
+              durationController: _level1DurationController,
+              onStart: _startLevel1,
+              onStop: _stopLevel1,
+              levelName: 'Level 1',
             ),
           ),
           const SizedBox(height: 20),
+
+          // Card for Level 2 Timer
+          _buildCard(
+            title: 'Level 2: Code Breaker',
+            child: _buildTimerControls(
+              timerDocRef: _level2TimerDocRef,
+              durationController: _level2DurationController,
+              onStart: _startLevel2,
+              onStop: _stopLevel2,
+              levelName: 'Level 2',
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Card for Level 3 Toggle
           _buildCard(
             title: 'Other Levels',
             child: StreamBuilder<DocumentSnapshot>(
@@ -179,11 +180,6 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
                 return Column(
                   children: [
                     _buildLevelToggleRow(
-                      'Level 2: Code Breaker',
-                      data['isLevel2Unlocked'] ?? false,
-                      'isLevel2Unlocked',
-                    ),
-                    _buildLevelToggleRow(
                       'Level 3: The Final Chase',
                       data['isLevel3Unlocked'] ?? false,
                       'isLevel3Unlocked',
@@ -195,6 +191,84 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
           ),
         ],
       ),
+    );
+  }
+
+  // --- REUSABLE WIDGETS ---
+
+  // A reusable widget for any level's timer controls
+  Widget _buildTimerControls({
+    required DocumentReference timerDocRef,
+    required TextEditingController durationController,
+    required Future<void> Function() onStart,
+    required Future<void> Function() onStop,
+    required String levelName,
+  }) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: timerDocRef.snapshots(),
+      builder: (context, timerSnapshot) {
+        if (!timerSnapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final timerData =
+            timerSnapshot.data!.data() as Map<String, dynamic>? ?? {};
+        final endTime = (timerData['endTime'] as Timestamp?)?.toDate();
+        final bool isTimerRunning =
+            endTime != null && endTime.isAfter(DateTime.now());
+
+        return Column(
+          children: [
+            TextField(
+              controller: durationController,
+              decoration: const InputDecoration(
+                labelText: 'Duration in Minutes',
+                border: OutlineInputBorder(),
+                labelStyle: TextStyle(color: Colors.white70),
+              ),
+              style: const TextStyle(color: Colors.white),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              enabled: !isTimerRunning,
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: Icon(
+                  isTimerRunning
+                      ? Icons.stop_circle_outlined
+                      : Icons.play_circle_outline,
+                ),
+                label: Text(
+                  isTimerRunning
+                      ? 'Stop & Lock $levelName'
+                      : 'Start $levelName',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isTimerRunning
+                      ? Colors.redAccent
+                      : Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onPressed: isTimerRunning ? onStop : onStart,
+              ),
+            ),
+            if (isTimerRunning)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Text(
+                  '$levelName is LIVE. Ends at ${DateFormat.jm().format(endTime)}',
+                  style: const TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: Colors.greenAccent,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -236,7 +310,6 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
         value: isUnlocked,
         onChanged: (value) =>
             _levelsDocRef.set({fieldName: value}, SetOptions(merge: true)),
-        // FIX: Replaced deprecated 'activeColor' with modern properties.
         activeTrackColor: Colors.amber.shade700,
         inactiveTrackColor: Colors.grey.shade800,
         thumbColor: MaterialStateProperty.resolveWith((states) {
