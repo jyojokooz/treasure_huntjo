@@ -12,6 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:treasure_hunt_app/models/puzzle_model.dart';
 import 'package:treasure_hunt_app/models/team_model.dart';
+import 'package:treasure_hunt_app/services/auth_service.dart';
 
 class Level2LeaderboardView extends StatefulWidget {
   final bool isAdminView;
@@ -24,10 +25,13 @@ class Level2LeaderboardView extends StatefulWidget {
 class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
   DateTime? _timerStartTime;
   bool _isLoadingInitialData = true;
+  final AuthService _authService = AuthService();
+  String? _currentUserTeamId;
 
   @override
   void initState() {
     super.initState();
+    _currentUserTeamId = _authService.currentUser?.uid;
     _fetchTimerStartTime();
   }
 
@@ -232,6 +236,8 @@ class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
                         final timeTaken = _timerStartTime != null
                             ? submittedAt.difference(_timerStartTime!)
                             : Duration.zero;
+                        final bool isCurrentUserTeam =
+                            team.id == _currentUserTeamId;
 
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6.0),
@@ -246,14 +252,18 @@ class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
                                   ),
                                   borderRadius: BorderRadius.circular(15),
                                   border: Border.all(
-                                    color: Colors.white.withAlpha(
-                                      (0.2 * 255).round(),
-                                    ),
+                                    color: isCurrentUserTeam
+                                        ? Colors.amber
+                                        : Colors.white.withAlpha(
+                                            (0.2 * 255).round(),
+                                          ),
+                                    width: isCurrentUserTeam ? 2.0 : 1.0,
                                   ),
                                 ),
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(15),
-                                  onTap: widget.isAdminView
+                                  onTap:
+                                      (widget.isAdminView || isCurrentUserTeam)
                                       ? () {
                                           Navigator.push(
                                             context,
