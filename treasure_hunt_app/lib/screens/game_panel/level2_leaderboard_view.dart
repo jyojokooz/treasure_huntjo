@@ -3,14 +3,19 @@
 // FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\game_panel\level2_leaderboard_view.dart
 // ===============================
 
+// ignore_for_file: use_build_context_synchronously
+
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:treasure_hunt_app/models/puzzle_model.dart';
 import 'package:treasure_hunt_app/models/team_model.dart';
 
 class Level2LeaderboardView extends StatefulWidget {
-  const Level2LeaderboardView({super.key});
+  final bool isAdminView;
+  const Level2LeaderboardView({super.key, this.isAdminView = false});
 
   @override
   State<Level2LeaderboardView> createState() => _Level2LeaderboardViewState();
@@ -26,20 +31,18 @@ class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
     _fetchTimerStartTime();
   }
 
-  // Fetches the timer settings to calculate the start time of the level.
-  // This is crucial for calculating how long each team took to finish.
+  // --- Data Fetching and Reset Logic ---
+
   Future<void> _fetchTimerStartTime() async {
     try {
       final timerDoc = await FirebaseFirestore.instance
           .collection('game_settings')
           .doc('level2_timer')
           .get();
-
       if (timerDoc.exists) {
         final data = timerDoc.data()!;
         final endTime = (data['endTime'] as Timestamp?)?.toDate();
         final duration = data['durationMinutes'] as int?;
-
         if (endTime != null && duration != null) {
           if (mounted) {
             setState(() {
@@ -57,16 +60,83 @@ class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
     }
   }
 
-  // Formats a Duration object into a "mm:ss" string.
+  Future<void> _showResetConfirmationDialog() async {
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Confirm Reset'),
+          content: const Text(
+            'Are you sure you want to reset the Level 2 leaderboard? This will delete all scores and submission times for this level. This action cannot be undone.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Reset'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _resetLeaderboard();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _resetLeaderboard() async {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Resetting leaderboard...')));
+    try {
+      final teamsWithSubmissions = await FirebaseFirestore.instance
+          .collection('teams')
+          .where('level2Submission', isNotEqualTo: null)
+          .get();
+      if (teamsWithSubmissions.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No submissions found to reset.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in teamsWithSubmissions.docs) {
+        batch.update(doc.reference, {'level2Submission': FieldValue.delete()});
+      }
+      await batch.commit();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Level 2 leaderboard has been reset.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('An error occurred: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // --- UI Helper Widgets ---
+
   String _formatDuration(Duration duration) {
-    if (duration == Duration.zero) return '--:--';
+    if (duration <= Duration.zero) return '--:--';
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
     return "$minutes:$seconds";
   }
 
-  // Creates a styled widget for the rank, with special icons for the top 3.
   Widget _buildRankWidget(int rank) {
     Color color;
     IconData icon = Icons.military_tech;
@@ -105,6 +175,14 @@ class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
         title: const Text('Level 2 Leaderboard'),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          if (widget.isAdminView)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep_outlined),
+              tooltip: 'Reset Leaderboard',
+              onPressed: _showResetConfirmationDialog,
+            ),
+        ],
       ),
       body: Container(
         decoration: const BoxDecoration(
@@ -117,7 +195,6 @@ class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
           child: _isLoadingInitialData
               ? const Center(child: CircularProgressIndicator())
               : StreamBuilder<QuerySnapshot>(
-                  // Query for teams with Level 2 submissions, ordered by score then time.
                   stream: FirebaseFirestore.instance
                       .collection('teams')
                       .where('level2Submission', isNotEqualTo: null)
@@ -152,8 +229,6 @@ class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
                         final submission = team.level2Submission!;
                         final submittedAt =
                             (submission['submittedAt'] as Timestamp).toDate();
-
-                        // Calculate the time taken by the team.
                         final timeTaken = _timerStartTime != null
                             ? submittedAt.difference(_timerStartTime!)
                             : Duration.zero;
@@ -176,30 +251,46 @@ class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
                                     ),
                                   ),
                                 ),
-                                child: ListTile(
-                                  leading: _buildRankWidget(index + 1),
-                                  title: Text(
-                                    team.teamName,
-                                    style: GoogleFonts.cinzel(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 18,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    'Time: ${_formatDuration(timeTaken)}',
-                                    style: TextStyle(
-                                      color: Colors.white.withAlpha(
-                                        (0.7 * 255).round(),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(15),
+                                  onTap: widget.isAdminView
+                                      ? () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  _Level2TeamDetailsScreen(
+                                                    team: team,
+                                                  ),
+                                            ),
+                                          );
+                                        }
+                                      : null,
+                                  child: ListTile(
+                                    leading: _buildRankWidget(index + 1),
+                                    title: Text(
+                                      team.teamName,
+                                      style: GoogleFonts.cinzel(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
                                       ),
                                     ),
-                                  ),
-                                  trailing: Text(
-                                    'Score: ${submission['score']}/${submission['totalQuestions']}',
-                                    style: const TextStyle(
-                                      color: Colors.amber,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
+                                    subtitle: Text(
+                                      'Time: ${_formatDuration(timeTaken)}',
+                                      style: TextStyle(
+                                        color: Colors.white.withAlpha(
+                                          (0.7 * 255).round(),
+                                        ),
+                                      ),
+                                    ),
+                                    trailing: Text(
+                                      'Score: ${submission['score']}/${submission['totalQuestions']}',
+                                      style: const TextStyle(
+                                        color: Colors.amber,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -211,6 +302,209 @@ class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
                     );
                   },
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+// =======================================================================
+// The dedicated details screen, styled to match the Level 1 version
+// =======================================================================
+class _Level2TeamDetailsScreen extends StatefulWidget {
+  final Team team;
+  const _Level2TeamDetailsScreen({required this.team});
+
+  @override
+  State<_Level2TeamDetailsScreen> createState() =>
+      _Level2TeamDetailsScreenState();
+}
+
+class _Level2TeamDetailsScreenState extends State<_Level2TeamDetailsScreen> {
+  late final Future<List<Puzzle>> _puzzlesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _puzzlesFuture = _fetchAllPuzzles();
+  }
+
+  Future<List<Puzzle>> _fetchAllPuzzles() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('game_content/level2/puzzles')
+        .get();
+    return snapshot.docs.map((doc) => Puzzle.fromMap(doc.data())).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final submission = widget.team.level2Submission!;
+    final submittedAt = (submission['submittedAt'] as Timestamp).toDate();
+    final userAnswers = Map<String, String>.from(submission['answers'] ?? {});
+
+    return Theme(
+      data: ThemeData.dark(),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Level 2 Breakdown'),
+          backgroundColor: Colors.black,
+        ),
+        backgroundColor: Colors.black,
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Card(
+                color: Colors.grey[900],
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      const CircleAvatar(
+                        backgroundColor: Colors.amber,
+                        child: Icon(Icons.emoji_events, color: Colors.black),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          widget.team.teamName,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        'Score: ${submission['score']}/${submission['totalQuestions']}',
+                        style: const TextStyle(
+                          color: Colors.amber,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Card(
+                      color: Colors.grey[900],
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            const Icon(
+                              Icons.scoreboard_outlined,
+                              color: Colors.amber,
+                              size: 32,
+                            ),
+                            const SizedBox(height: 8),
+                            const Text('Score'),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${submission['score']}/${submission['totalQuestions']}',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Card(
+                      color: Colors.grey[900],
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            const Icon(
+                              Icons.timer_outlined,
+                              color: Colors.amber,
+                              size: 32,
+                            ),
+                            const SizedBox(height: 8),
+                            const Text('Submitted'),
+                            const SizedBox(height: 4),
+                            Text(
+                              DateFormat('MMM d, hh:mm a').format(submittedAt),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Answer Breakdown',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const Divider(color: Colors.grey),
+              FutureBuilder<List<Puzzle>>(
+                future: _puzzlesFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Text("Could not load puzzle breakdown.");
+                  }
+
+                  final allPuzzles = snapshot.data!;
+                  allPuzzles.sort(
+                    (a, b) => a.scrambledWord.compareTo(b.scrambledWord),
+                  );
+
+                  return Column(
+                    children: List.generate(allPuzzles.length, (index) {
+                      final puzzle = allPuzzles[index];
+                      final userAnswer =
+                          userAnswers[puzzle.id] ?? "Not Answered";
+                      final isCorrect = userAnswer == puzzle.correctAnswer;
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${index + 1}. Unscramble: ${puzzle.scrambledWord}',
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(
+                                  isCorrect
+                                      ? Icons.check_circle_outline
+                                      : Icons.highlight_off,
+                                  color: isCorrect ? Colors.green : Colors.red,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text('Selected: $userAnswer')),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

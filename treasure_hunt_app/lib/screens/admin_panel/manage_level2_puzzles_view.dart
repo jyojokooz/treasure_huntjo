@@ -8,6 +8,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:treasure_hunt_app/models/puzzle_model.dart';
+import 'package:treasure_hunt_app/screens/game_panel/level2_leaderboard_view.dart';
 import 'package:uuid/uuid.dart';
 
 class ManageLevel2PuzzlesView extends StatefulWidget {
@@ -97,80 +98,110 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
     // A Stack is used to place the FloatingActionButton on top of the list.
     return Stack(
       children: [
-        StreamBuilder<QuerySnapshot>(
-          stream: _puzzlesCollection.snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              return Center(
-                child: Text(
-                  'No Level 2 puzzles found. Add one!',
-                  // ignore: deprecated_member_use
-                  style: TextStyle(color: Colors.white.withOpacity(0.7)),
-                ),
-              );
-            }
-
-            final puzzles = snapshot.data!.docs
-                .map(
-                  (doc) => Puzzle.fromMap(doc.data() as Map<String, dynamic>),
-                )
-                .toList();
-
-            return ListView.builder(
-              // Padding to avoid the FAB and the admin nav bar
-              padding: const EdgeInsets.only(bottom: 90, top: 8),
-              itemCount: puzzles.length,
-              itemBuilder: (context, index) {
-                final puzzle = puzzles[index];
-                return Card(
-                  // ignore: deprecated_member_use
-                  color: Colors.white.withOpacity(0.9),
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  child: ListTile(
-                    title: Text(
-                      puzzle.scrambledWord,
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontWeight: FontWeight.bold,
+        Column(
+          children: [
+            // Button to view the Level 2 Leaderboard.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.leaderboard_outlined),
+                  label: const Text('View Level 2 Leaderboard'),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            const Level2LeaderboardView(isAdminView: true),
                       ),
-                    ),
-                    subtitle: Text(
-                      'Answer: ${puzzle.correctAnswer}',
-                      // ignore: deprecated_member_use
-                      style: TextStyle(color: Colors.black.withOpacity(0.7)),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(
-                            Icons.edit_outlined,
-                            color: Colors.black87,
-                          ),
-                          onPressed: () =>
-                              _showPuzzleDialog(existingPuzzle: puzzle),
+                    );
+                  },
+                ),
+              ),
+            ),
+            // The list of puzzles fills the remaining space.
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: _puzzlesCollection.snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'No Level 2 puzzles found. Add one!',
+                        // ignore: deprecated_member_use
+                        style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                      ),
+                    );
+                  }
+
+                  final puzzles = snapshot.data!.docs
+                      .map(
+                        (doc) =>
+                            Puzzle.fromMap(doc.data() as Map<String, dynamic>),
+                      )
+                      .toList();
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 90, top: 8),
+                    itemCount: puzzles.length,
+                    itemBuilder: (context, index) {
+                      final puzzle = puzzles[index];
+                      return Card(
+                        // ignore: deprecated_member_use
+                        color: Colors.white.withOpacity(0.9),
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
                         ),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.redAccent,
+                        child: ListTile(
+                          title: Text(
+                            puzzle.scrambledWord,
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                          onPressed: () =>
-                              _puzzlesCollection.doc(puzzle.id).delete(),
+                          subtitle: Text(
+                            'Answer: ${puzzle.correctAnswer}',
+                            // ignore: deprecated_member_use
+                            style: TextStyle(
+                              // ignore: deprecated_member_use
+                              color: Colors.black.withOpacity(0.7),
+                            ),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.edit_outlined,
+                                  color: Colors.black87,
+                                ),
+                                onPressed: () =>
+                                    _showPuzzleDialog(existingPuzzle: puzzle),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.redAccent,
+                                ),
+                                onPressed: () =>
+                                    _puzzlesCollection.doc(puzzle.id).delete(),
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            );
-          },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
         ),
         // Positioned widget places the FAB correctly within the Stack.
         Positioned(

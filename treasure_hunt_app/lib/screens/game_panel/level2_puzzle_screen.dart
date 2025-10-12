@@ -3,12 +3,11 @@
 // FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\game_panel\level2_puzzle_screen.dart
 // ===============================
 
-// ignore_for_file: deprecated_member_use
-
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:treasure_hunt_app/models/puzzle_model.dart';
 import 'package:treasure_hunt_app/services/auth_service.dart';
 
 class Level2PuzzleScreen extends StatefulWidget {
@@ -32,23 +31,18 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
   bool _isLoading = true;
   bool _isSubmitting = false;
 
-  // In a real application, you might fetch these puzzles from Firestore.
-  // For this example, we'll hardcode them.
-  final List<Map<String, String>> _puzzles = [
-    {'scrambled': 'UTFERLT', 'answer': 'FLUTTER'},
-    {'scrambled': 'BRIAFSEE', 'answer': 'FIREBASE'},
-    {'scrambled': 'TRAD', 'answer': 'DART'},
-    {'scrambled': 'TEWIDG', 'answer': 'WIDGET'},
-    {'scrambled': 'STELASST', 'answer': 'STATELESS'},
-  ];
-
+  // This list will be filled with puzzles from Firestore.
+  List<Puzzle> _puzzles = [];
   int _currentIndex = 0;
   int _score = 0;
+
+  // A map to store the user's answers. Key is puzzle ID, value is the submitted answer.
+  final Map<String, String> _submittedAnswers = {};
 
   @override
   void initState() {
     super.initState();
-    _setupTimer();
+    _initializeLevel();
   }
 
   @override
@@ -59,21 +53,43 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     super.dispose();
   }
 
+  // Combines fetching puzzles and setting up the timer.
+  Future<void> _initializeLevel() async {
+    await _fetchPuzzles();
+    _setupTimer();
+  }
+
+  // Fetches the puzzles you created in the admin panel.
+  Future<void> _fetchPuzzles() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('game_content')
+          .doc('level2')
+          .collection('puzzles')
+          .get();
+      if (mounted) {
+        setState(() {
+          _puzzles = snapshot.docs
+              .map((doc) => Puzzle.fromMap(doc.data()))
+              .toList();
+          // Randomize the puzzle order for each playthrough.
+          _puzzles.shuffle();
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching puzzles: $e");
+    }
+  }
+
   void _setupTimer() {
     _timerSubscription = _timerDocRef.snapshots().listen((timerSnap) {
       if (!mounted) return;
-
       final data = timerSnap.data();
       final endTime = (data?['endTime'] as Timestamp?)?.toDate();
-
       _countdownTimer?.cancel();
 
       if (endTime != null) {
-        setState(() {
-          _timerNotStarted = false;
-          _isLoading = false;
-        });
-
+        setState(() => _timerNotStarted = false);
         final now = DateTime.now();
         if (endTime.isAfter(now)) {
           _timeLeft = endTime.difference(now);
@@ -82,31 +98,33 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
             if (secondsLeft < 0) {
               timer.cancel();
               if (!_isSubmitting) _submitScore(autoSubmitted: true);
-            } else {
-              if (mounted) {
-                setState(() => _timeLeft = Duration(seconds: secondsLeft));
-              }
+            } else if (mounted) {
+              setState(() => _timeLeft = Duration(seconds: secondsLeft));
             }
           });
         } else {
-          // Timer has already expired
           setState(() => _timeLeft = Duration.zero);
           if (!_isSubmitting) _submitScore(autoSubmitted: true);
         }
       } else {
-        // Timer has been stopped by the admin
-        setState(() {
-          _timeLeft = Duration.zero;
-          _timerNotStarted = true;
-          _isLoading = false;
-        });
+        setState(() => _timerNotStarted = true);
       }
+
+      setState(() => _isLoading = false);
     });
   }
 
   void _checkAnswer() {
+    if (_puzzles.isEmpty) return; // Guard against empty puzzle list
+
     final submittedAnswer = _textController.text.trim().toUpperCase();
-    final correctAnswer = _puzzles[_currentIndex]['answer'];
+    final currentPuzzle = _puzzles[_currentIndex];
+    final correctAnswer = currentPuzzle.correctAnswer;
+
+    // Record the user's answer for the detailed breakdown
+    _submittedAnswers[currentPuzzle.id] = submittedAnswer.isEmpty
+        ? "SKIPPED"
+        : submittedAnswer;
 
     if (submittedAnswer == correctAnswer) {
       _score++;
@@ -132,23 +150,30 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     if (_currentIndex < _puzzles.length - 1) {
       setState(() => _currentIndex++);
     } else {
-      // This was the last puzzle, submit the score
       _submitScore(autoSubmitted: false);
     }
   }
 
   Future<void> _submitScore({bool autoSubmitted = false}) async {
-    // Prevent multiple submissions
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
-
     _countdownTimer?.cancel();
     _timerSubscription?.cancel();
+
+    // When time runs out, mark any unanswered questions
+    if (autoSubmitted) {
+      for (final puzzle in _puzzles) {
+        if (!_submittedAnswers.containsKey(puzzle.id)) {
+          _submittedAnswers[puzzle.id] = "TIME UP";
+        }
+      }
+    }
 
     final submissionData = {
       'score': _score,
       'totalQuestions': _puzzles.length,
       'submittedAt': Timestamp.now(),
+      'answers': _submittedAnswers, // Save the detailed answers map
     };
 
     final user = _authService.currentUser;
@@ -164,7 +189,7 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
         SnackBar(
           content: Text(
             autoSubmitted
-                ? 'Time is up! Answers auto-submitted. Score: $_score/${_puzzles.length}'
+                ? 'Time is up! Your score: $_score/${_puzzles.length}'
                 : 'Level 2 complete! Your score: $_score/${_puzzles.length}',
           ),
           backgroundColor: autoSubmitted ? Colors.orange : Colors.green,
@@ -179,6 +204,9 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     final minutes = twoDigits(_timeLeft.inMinutes.remainder(60));
     final seconds = twoDigits(_timeLeft.inSeconds.remainder(60));
     final timeString = '$minutes:$seconds';
+
+    final bool canPlay =
+        !_isLoading && !_timerNotStarted && _puzzles.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -210,24 +238,8 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
             fit: BoxFit.cover,
           ),
         ),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _timerNotStarted
-            ? const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(20.0),
-                  child: Text(
-                    "Waiting for the admin to start the timer...",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.white70,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ),
-              )
-            : Padding(
+        child: canPlay
+            ? Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -255,11 +267,12 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
+                        // ignore: deprecated_member_use
                         color: Colors.black.withOpacity(0.3),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        _puzzles[_currentIndex]['scrambled']!,
+                        _puzzles[_currentIndex].scrambledWord,
                         textAlign: TextAlign.center,
                         style: GoogleFonts.bangers(
                           fontSize: 50,
@@ -283,6 +296,7 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
                       decoration: InputDecoration(
                         hintText: 'YOUR ANSWER',
                         hintStyle: TextStyle(
+                          // ignore: deprecated_member_use
                           color: Colors.white.withOpacity(0.5),
                         ),
                         enabledBorder: OutlineInputBorder(
@@ -321,6 +335,21 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
                     ),
                   ],
                 ),
+              )
+            : Center(
+                child: _isLoading
+                    ? const CircularProgressIndicator()
+                    : Text(
+                        _timerNotStarted
+                            ? "Waiting for the admin to start the timer..."
+                            : "No puzzles have been added for this level yet.",
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          color: Colors.white70,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
               ),
       ),
     );
