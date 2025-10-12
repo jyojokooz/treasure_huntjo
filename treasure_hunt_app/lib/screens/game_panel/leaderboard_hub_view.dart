@@ -3,15 +3,77 @@
 // FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\game_panel\leaderboard_hub_view.dart
 // ===============================
 
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:treasure_hunt_app/screens/game_panel/level1_leaderboard_view.dart';
 import 'package:treasure_hunt_app/screens/game_panel/level2_leaderboard_view.dart';
 
-class LeaderboardHubView extends StatelessWidget {
+class LeaderboardHubView extends StatefulWidget {
   const LeaderboardHubView({super.key});
 
-  // A reusable helper widget to create styled buttons for each leaderboard.
+  @override
+  State<LeaderboardHubView> createState() => _LeaderboardHubViewState();
+}
+
+class _LeaderboardHubViewState extends State<LeaderboardHubView> {
+  // State variables to track if leaderboards have any content
+  bool _hasLevel1Submissions = false;
+  bool _hasLevel2Submissions = false;
+  bool _isLoading = true;
+
+  // Stream subscriptions to manage listeners
+  StreamSubscription? _level1LeaderboardSub;
+  StreamSubscription? _level2LeaderboardSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupListeners();
+  }
+
+  void _setupListeners() {
+    // Listener to check if the Level 1 Leaderboard is empty
+    _level1LeaderboardSub = FirebaseFirestore.instance
+        .collection('teams')
+        .where('level1Submission', isNotEqualTo: null)
+        .limit(
+          1,
+        ) // An efficient query to just check if at least one entry exists
+        .snapshots()
+        .listen((snapshot) {
+          if (!mounted) return;
+          setState(() {
+            _hasLevel1Submissions = snapshot.docs.isNotEmpty;
+            if (_isLoading) _isLoading = false; // Mark loading as complete
+          });
+        });
+
+    // Listener to check if the Level 2 Leaderboard is empty
+    _level2LeaderboardSub = FirebaseFirestore.instance
+        .collection('teams')
+        .where('level2Submission', isNotEqualTo: null)
+        .limit(1)
+        .snapshots()
+        .listen((snapshot) {
+          if (!mounted) return;
+          setState(() {
+            _hasLevel2Submissions = snapshot.docs.isNotEmpty;
+            if (_isLoading) _isLoading = false;
+          });
+        });
+  }
+
+  @override
+  void dispose() {
+    // Cancel all subscriptions to prevent memory leaks
+    _level1LeaderboardSub?.cancel();
+    _level2LeaderboardSub?.cancel();
+    super.dispose();
+  }
+
+  // A reusable helper widget to create styled buttons
   Widget _buildLevelButton(
     BuildContext context,
     String title,
@@ -31,7 +93,6 @@ class LeaderboardHubView extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        // The button is only clickable if 'enabled' is true.
         onPressed: enabled
             ? () => Navigator.push(
                 context,
@@ -54,7 +115,6 @@ class LeaderboardHubView extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Main title for the hub screen.
           Text(
             'Leaderboards',
             textAlign: TextAlign.center,
@@ -71,30 +131,34 @@ class LeaderboardHubView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 30),
-
-          // Button to navigate to the Level 1 Leaderboard.
-          _buildLevelButton(
-            context,
-            'Level 1 Leaderboard',
-            const Level1LeaderboardView(),
-            true, // Always enabled.
-          ),
-
-          // Button to navigate to the Level 2 Leaderboard.
-          _buildLevelButton(
-            context,
-            'Level 2 Leaderboard',
-            const Level2LeaderboardView(),
-            true, // Now enabled.
-          ),
-
-          // Placeholder button for the future Level 3 Leaderboard.
-          _buildLevelButton(
-            context,
-            'Level 3 Leaderboard',
-            const Scaffold(body: Center(child: Text("Coming Soon!"))),
-            false, // Currently disabled.
-          ),
+          // Show a loading indicator until the initial data is fetched
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator())
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // The button is enabled ONLY if there are submissions
+                _buildLevelButton(
+                  context,
+                  'Level 1 Leaderboard',
+                  const Level1LeaderboardView(),
+                  _hasLevel1Submissions,
+                ),
+                _buildLevelButton(
+                  context,
+                  'Level 2 Leaderboard',
+                  const Level2LeaderboardView(),
+                  _hasLevel2Submissions,
+                ),
+                _buildLevelButton(
+                  context,
+                  'Level 3 Leaderboard',
+                  const Scaffold(),
+                  false,
+                ),
+              ],
+            ),
         ],
       ),
     );
