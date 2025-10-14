@@ -18,10 +18,6 @@ class ManageLevelsView extends StatefulWidget {
 }
 
 class _ManageLevelsViewState extends State<ManageLevelsView> {
-  final _levelsDocRef = FirebaseFirestore.instance
-      .collection('game_settings')
-      .doc('levels');
-
   // --- Level 1 References ---
   final _level1TimerDocRef = FirebaseFirestore.instance
       .collection('game_settings')
@@ -34,100 +30,46 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
       .doc('level2_timer');
   final _level2DurationController = TextEditingController(text: '5');
 
+  // NEW: Level 3 References
+  final _level3TimerDocRef = FirebaseFirestore.instance
+      .collection('game_settings')
+      .doc('level3_timer');
+  final _level3DurationController = TextEditingController(text: '10');
+
   @override
   void dispose() {
     _level1DurationController.dispose();
     _level2DurationController.dispose();
+    _level3DurationController.dispose(); // NEW
     super.dispose();
   }
 
-  // --- Level 1 Methods ---
-  Future<void> _startLevel1() async {
-    final minutes = int.tryParse(_level1DurationController.text);
-    if (minutes == null || minutes <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid duration in minutes.'),
-        ),
-      );
-      return;
-    }
-
-    final batch = FirebaseFirestore.instance.batch();
-    batch.set(_levelsDocRef, {
-      'isLevel1Unlocked': true,
-    }, SetOptions(merge: true));
+  Future<void> _startLevel(
+    DocumentReference timerDocRef,
+    int minutes,
+    String levelName,
+  ) async {
     final endTime = DateTime.now().add(Duration(minutes: minutes));
-    batch.set(_level1TimerDocRef, {
+    await timerDocRef.set({
       'durationMinutes': minutes,
       'endTime': Timestamp.fromDate(endTime),
     });
-    await batch.commit();
-
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Level 1 has been started!'),
+      SnackBar(
+        content: Text('$levelName has been started!'),
         backgroundColor: Colors.green,
       ),
     );
   }
 
-  Future<void> _stopLevel1() async {
-    final batch = FirebaseFirestore.instance.batch();
-    batch.set(_levelsDocRef, {
-      'isLevel1Unlocked': false,
-    }, SetOptions(merge: true));
-    batch.set(_level1TimerDocRef, {'endTime': null}, SetOptions(merge: true));
-    await batch.commit();
-
+  Future<void> _stopLevel(
+    DocumentReference timerDocRef,
+    String levelName,
+  ) async {
+    await timerDocRef.set({'endTime': null}, SetOptions(merge: true));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Level 1 has been stopped and locked.'),
-        backgroundColor: Colors.red,
-      ),
-    );
-  }
-
-  // --- Level 2 Methods ---
-  Future<void> _startLevel2() async {
-    final minutes = int.tryParse(_level2DurationController.text);
-    if (minutes == null || minutes <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid duration.')),
-      );
-      return;
-    }
-
-    final batch = FirebaseFirestore.instance.batch();
-    batch.set(_levelsDocRef, {
-      'isLevel2Unlocked': true,
-    }, SetOptions(merge: true));
-    final endTime = DateTime.now().add(Duration(minutes: minutes));
-    batch.set(_level2TimerDocRef, {
-      'durationMinutes': minutes,
-      'endTime': Timestamp.fromDate(endTime),
-    });
-    await batch.commit();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Level 2 has been started!'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
-  Future<void> _stopLevel2() async {
-    final batch = FirebaseFirestore.instance.batch();
-    batch.set(_levelsDocRef, {
-      'isLevel2Unlocked': false,
-    }, SetOptions(merge: true));
-    batch.set(_level2TimerDocRef, {'endTime': null}, SetOptions(merge: true));
-    await batch.commit();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Level 2 has been stopped and locked.'),
+      SnackBar(
+        content: Text('$levelName has been stopped and locked.'),
         backgroundColor: Colors.red,
       ),
     );
@@ -138,55 +80,33 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: ListView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 90.0),
         children: [
-          // Card for Level 1 Timer
           _buildCard(
             title: 'Level 1: Mind Spark',
             child: _buildTimerControls(
               timerDocRef: _level1TimerDocRef,
               durationController: _level1DurationController,
-              onStart: _startLevel1,
-              onStop: _stopLevel1,
               levelName: 'Level 1',
             ),
           ),
           const SizedBox(height: 20),
-
-          // Card for Level 2 Timer
           _buildCard(
             title: 'Level 2: Code Breaker',
             child: _buildTimerControls(
               timerDocRef: _level2TimerDocRef,
               durationController: _level2DurationController,
-              onStart: _startLevel2,
-              onStop: _stopLevel2,
               levelName: 'Level 2',
             ),
           ),
           const SizedBox(height: 20),
-
-          // Card for Level 3 Toggle
+          // NEW: Card for Level 3 Timer
           _buildCard(
-            title: 'Other Levels',
-            child: StreamBuilder<DocumentSnapshot>(
-              stream: _levelsDocRef.snapshots(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final data =
-                    snapshot.data!.data() as Map<String, dynamic>? ?? {};
-                return Column(
-                  children: [
-                    _buildLevelToggleRow(
-                      'Level 3: The Final Chase',
-                      data['isLevel3Unlocked'] ?? false,
-                      'isLevel3Unlocked',
-                    ),
-                  ],
-                );
-              },
+            title: 'Level 3: The Final Chase',
+            child: _buildTimerControls(
+              timerDocRef: _level3TimerDocRef,
+              durationController: _level3DurationController,
+              levelName: 'Level 3',
             ),
           ),
         ],
@@ -196,12 +116,9 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
 
   // --- REUSABLE WIDGETS ---
 
-  // A reusable widget for any level's timer controls
   Widget _buildTimerControls({
     required DocumentReference timerDocRef,
     required TextEditingController durationController,
-    required Future<void> Function() onStart,
-    required Future<void> Function() onStop,
     required String levelName,
   }) {
     return StreamBuilder<DocumentSnapshot>(
@@ -252,7 +169,22 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                onPressed: isTimerRunning ? onStop : onStart,
+                onPressed: () {
+                  if (isTimerRunning) {
+                    _stopLevel(timerDocRef, levelName);
+                  } else {
+                    final minutes = int.tryParse(durationController.text);
+                    if (minutes != null && minutes > 0) {
+                      _startLevel(timerDocRef, minutes, levelName);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please enter a valid duration.'),
+                        ),
+                      );
+                    }
+                  }
+                },
               ),
             ),
             if (isTimerRunning)
@@ -292,32 +224,6 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
             child,
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildLevelToggleRow(String title, bool isUnlocked, String fieldName) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(
-        title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      trailing: Switch.adaptive(
-        value: isUnlocked,
-        onChanged: (value) =>
-            _levelsDocRef.set({fieldName: value}, SetOptions(merge: true)),
-        activeTrackColor: Colors.amber.shade700,
-        inactiveTrackColor: Colors.grey.shade800,
-        thumbColor: MaterialStateProperty.resolveWith((states) {
-          if (states.contains(MaterialState.selected)) {
-            return Colors.amber;
-          }
-          return Colors.grey.shade400;
-        }),
       ),
     );
   }

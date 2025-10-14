@@ -16,10 +16,12 @@ class Team {
   final String role;
   final DateTime createdAt;
   final bool isEligibleForLevel2;
+  final bool isEligibleForLevel3; // NEW: Field for Level 3 eligibility
 
   final Map<String, dynamic>? level1Submission;
+  final Map<String, dynamic>? level2Submission;
   final Map<String, dynamic>?
-  level2Submission; // NEW: Field for Level 2 results
+  level3Submission; // NEW: Field for Level 3 results
 
   Team({
     required this.id,
@@ -32,8 +34,10 @@ class Team {
     this.role = 'user',
     required this.createdAt,
     this.level1Submission,
-    this.level2Submission, // NEW: Add to constructor
+    this.level2Submission,
+    this.level3Submission, // NEW: Add to constructor
     this.isEligibleForLevel2 = false,
+    this.isEligibleForLevel3 = false, // NEW: Add to constructor
   });
 
   factory Team.fromMap(Map<String, dynamic> map) {
@@ -48,8 +52,10 @@ class Team {
       role: map['role'] ?? 'user',
       createdAt: (map['createdAt'] as Timestamp).toDate(),
       level1Submission: map['level1Submission'] as Map<String, dynamic>?,
-      level2Submission: map['level2Submission'] as Map<String, dynamic>?, // NEW
+      level2Submission: map['level2Submission'] as Map<String, dynamic>?,
+      level3Submission: map['level3Submission'] as Map<String, dynamic>?, // NEW
       isEligibleForLevel2: map['isEligibleForLevel2'] ?? false,
+      isEligibleForLevel3: map['isEligibleForLevel3'] ?? false, // NEW
     );
   }
 
@@ -65,8 +71,10 @@ class Team {
       'role': role,
       'createdAt': createdAt,
       'level1Submission': level1Submission,
-      'level2Submission': level2Submission, // NEW
+      'level2Submission': level2Submission,
+      'level3Submission': level3Submission, // NEW
       'isEligibleForLevel2': isEligibleForLevel2,
+      'isEligibleForLevel3': isEligibleForLevel3, // NEW
     };
   }
 }

@@ -229,10 +229,26 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
             ),
             Switch(
               value: team.isEligibleForLevel2,
-              onChanged: (value) {
-                // Updates the 'isEligibleForLevel2' field in Firestore
-                docRef.update({'isEligibleForLevel2': value});
-              },
+              onChanged: (value) =>
+                  docRef.update({'isEligibleForLevel2': value}),
+              activeThumbColor: Colors.amber,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ],
+        ),
+        const SizedBox(width: 4),
+        // NEW: Level 3 eligibility switch
+        Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Lvl 3',
+              style: TextStyle(fontSize: 10, color: Colors.white70),
+            ),
+            Switch(
+              value: team.isEligibleForLevel3,
+              onChanged: (value) =>
+                  docRef.update({'isEligibleForLevel3': value}),
               activeThumbColor: Colors.amber,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
