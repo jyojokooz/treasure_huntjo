@@ -3,14 +3,12 @@
 // FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\admin_panel\manage_levels_view.dart
 // ===============================
 
-// --- THE FIX IS HERE: Added all necessary imports ---
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-// ---------------------------------------------------
-
-// ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
 class ManageLevelsView extends StatefulWidget {
   const ManageLevelsView({super.key});
@@ -61,8 +59,7 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     super.dispose();
   }
 
-  // --- Game Control Functions ---
-
+  // --- Functions (unchanged) ---
   Future<void> _endGameAndAnnounceWinners() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -84,7 +81,6 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
         ],
       ),
     );
-
     if (confirmed == true) {
       final batch = FirebaseFirestore.instance.batch();
       batch.set(_level1TimerDocRef, {'endTime': null}, SetOptions(merge: true));
@@ -94,7 +90,6 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
         'isGameFinished': true,
       }, SetOptions(merge: true));
       await batch.commit();
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Game Over! Winners are being announced.'),
@@ -125,20 +120,19 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
         ],
       ),
     );
-
     if (confirmed != true) return;
-
     final firestore = FirebaseFirestore.instance;
     final batch = firestore.batch();
-
     batch.set(_levelsDocRef, {
       'isGameFinished': false,
     }, SetOptions(merge: true));
     batch.set(_level1TimerDocRef, {'endTime': null}, SetOptions(merge: true));
     batch.set(_level2TimerDocRef, {'endTime': null}, SetOptions(merge: true));
     batch.set(_level3TimerDocRef, {'endTime': null}, SetOptions(merge: true));
-    batch.set(_level3SettingsDocRef, {'activeDepartments': []});
-
+    batch.set(_level3SettingsDocRef, {
+      'activeDepartments': [],
+      'clueOrder': [],
+    });
     final teamsSnapshot = await firestore.collection('teams').get();
     for (final doc in teamsSnapshot.docs) {
       batch.update(doc.reference, {
@@ -148,7 +142,6 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
         'level3Progress': FieldValue.delete(),
       });
     }
-
     await batch.commit();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -224,96 +217,165 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
           ),
           const SizedBox(height: 20),
           _buildCard(
-            title: 'Manage Level 3 Departments',
-            child: _buildDepartmentSelector(),
+            title: 'Manage Level 3 Departments & Order',
+            child: _buildDepartmentManager(),
           ),
           const SizedBox(height: 20),
-          _buildCard(
-            title: 'Game Control',
-            child: Column(
-              children: [
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.celebration),
-                    label: const Text('Announce Winners & End Game'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.amber,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    onPressed: _endGameAndAnnounceWinners,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.replay_circle_filled),
-                    label: const Text('Reset Game (Play Again)'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onPressed: _resetEntireGame,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          _buildCard(title: 'Game Control', child: _buildGameControlButtons()),
         ],
       ),
     );
   }
 
-  // --- Helper Widgets ---
-
-  Widget _buildDepartmentSelector() {
+  // --- WIDGET REWRITE: This widget now has a working ReorderableListView ---
+  Widget _buildDepartmentManager() {
     return StreamBuilder<DocumentSnapshot>(
       stream: _level3SettingsDocRef.snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
         List<String> activeDepartments = [];
-        if (snapshot.hasData && snapshot.data!.exists) {
+        List<String> clueOrder = [];
+        if (snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
           activeDepartments = List<String>.from(
             data['activeDepartments'] ?? [],
           );
+          clueOrder = List<String>.from(data['clueOrder'] ?? []);
         }
 
-        return Column(
-          children: _allDepartments.entries.map((entry) {
-            final deptId = entry.key;
-            final deptName = entry.value;
-            final isSelected = activeDepartments.contains(deptId);
+        clueOrder.retainWhere((id) => activeDepartments.contains(id));
 
-            return CheckboxListTile(
-              title: Text(
-                deptName,
-                style: const TextStyle(color: Colors.white),
-              ),
-              value: isSelected,
-              onChanged: (bool? value) {
-                if (value == true) {
-                  _level3SettingsDocRef.set({
-                    'activeDepartments': FieldValue.arrayUnion([deptId]),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "1. Select active departments:",
+              style: TextStyle(color: Colors.white70),
+            ),
+            ..._allDepartments.entries.map((entry) {
+              return CheckboxListTile(
+                title: Text(
+                  entry.value,
+                  style: const TextStyle(color: Colors.white),
+                ),
+                value: activeDepartments.contains(entry.key),
+                onChanged: (bool? value) async {
+                  final settingsSnap = await _level3SettingsDocRef.get();
+                  List<String> currentOrder = [];
+                  if (settingsSnap.exists) {
+                    final data = settingsSnap.data() as Map<String, dynamic>;
+                    currentOrder = List<String>.from(data['clueOrder'] ?? []);
+                  }
+
+                  if (value == true) {
+                    if (!currentOrder.contains(entry.key)) {
+                      currentOrder.add(entry.key);
+                    }
+                  } else {
+                    currentOrder.remove(entry.key);
+                  }
+
+                  await _level3SettingsDocRef.set({
+                    'activeDepartments': value == true
+                        ? FieldValue.arrayUnion([entry.key])
+                        : FieldValue.arrayRemove([entry.key]),
+                    'clueOrder': currentOrder,
                   }, SetOptions(merge: true));
-                } else {
-                  _level3SettingsDocRef.update({
-                    'activeDepartments': FieldValue.arrayRemove([deptId]),
-                  });
-                }
-              },
-              activeColor: Colors.amber,
-              checkColor: Colors.black,
-            );
-          }).toList(),
+                },
+              );
+            }),
+            const Divider(height: 30),
+            const Text(
+              "2. Drag to set clue order:",
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 10),
+            if (clueOrder.isEmpty)
+              const Text(
+                'No active departments to order.',
+                style: TextStyle(color: Colors.white54),
+              )
+            else
+              // --- THE FIX IS HERE ---
+              ReorderableListView(
+                shrinkWrap: true, // Let the list size itself
+                primary: false, // Indicate it's a nested scrollable
+                onReorder: (oldIndex, newIndex) {
+                  // This logic now correctly updates Firestore, which will then
+                  // trigger the StreamBuilder to rebuild the UI with the correct order.
+                  if (newIndex > oldIndex) {
+                    newIndex -= 1;
+                  }
+                  // Make a mutable copy from the stream's data to reorder
+                  List<String> newOrder = List.from(clueOrder);
+                  final String item = newOrder.removeAt(oldIndex);
+                  newOrder.insert(newIndex, item);
+
+                  // Update Firestore directly. NO setState is needed here.
+                  // The StreamBuilder will handle the UI update automatically.
+                  _level3SettingsDocRef.set({
+                    'clueOrder': newOrder,
+                  }, SetOptions(merge: true));
+                },
+                children: [
+                  for (final clueId in clueOrder)
+                    Card(
+                      key: ValueKey(clueId),
+                      color: Colors.white.withAlpha((0.15 * 255).round()),
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.drag_handle,
+                          color: Colors.white70,
+                        ),
+                        title: Text(
+                          _allDepartments[clueId] ?? 'Unknown',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+          ],
         );
       },
+    );
+  }
+
+  // --- Other helper widgets (unchanged) ---
+  Widget _buildGameControlButtons() {
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.celebration),
+            label: const Text('Announce Winners & End Game'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            onPressed: _endGameAndAnnounceWinners,
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.replay_circle_filled),
+            label: const Text('Reset Game (Play Again)'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            onPressed: _resetEntireGame,
+          ),
+        ),
+      ],
     );
   }
 
@@ -328,13 +390,11 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
         if (!timerSnapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-
         final timerData =
             timerSnapshot.data!.data() as Map<String, dynamic>? ?? {};
         final endTime = (timerData['endTime'] as Timestamp?)?.toDate();
         final bool isTimerRunning =
             endTime != null && endTime.isAfter(DateTime.now());
-
         return Column(
           children: [
             TextField(

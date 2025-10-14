@@ -29,7 +29,7 @@ class _Level3ScreenState extends State<Level3Screen> {
   StreamSubscription? _timerSubscription;
   Timer? _countdownTimer;
   Duration _timeLeft = Duration.zero;
-  bool _timerNotStarted = false; // Added state
+  bool _timerNotStarted = false;
 
   bool _isLoading = true;
   bool _isSubmitting = false;
@@ -52,7 +52,6 @@ class _Level3ScreenState extends State<Level3Screen> {
   Future<void> _initializeLevel() async {
     await _fetchLevel3SettingsAndClues();
     _setupTimer();
-    // Removed setState for isLoading here, it's handled in the timer setup
   }
 
   Future<void> _fetchLevel3SettingsAndClues() async {
@@ -61,12 +60,15 @@ class _Level3ScreenState extends State<Level3Screen> {
           .collection('game_settings')
           .doc('level3_settings')
           .get();
-      final activeDepartments = List<String>.from(
-        settingsDoc.data()?['activeDepartments'] ?? [],
+      // THE FIX: Get the ordered list of clues from the admin settings.
+      final clueOrderFromAdmin = List<String>.from(
+        settingsDoc.data()?['clueOrder'] ?? [],
       );
 
-      if (activeDepartments.isEmpty) {
-        if (mounted) setState(() => _clueOrder = []);
+      if (clueOrderFromAdmin.isEmpty) {
+        if (mounted) {
+          setState(() => _clueOrder = []);
+        }
         return;
       }
 
@@ -78,19 +80,10 @@ class _Level3ScreenState extends State<Level3Screen> {
           doc.id: Level3Clue.fromMap(doc.data(), doc.id),
       };
 
-      const definedOrder = ['cse', 'barch', 'mech', 'ece', 'eee', 'rai', 'mca'];
-
-      final finalClueOrder = definedOrder
-          .where(
-            (id) =>
-                activeDepartments.contains(id) && fetchedClues.containsKey(id),
-          )
-          .toList();
-
       if (mounted) {
         setState(() {
           _allClues = fetchedClues;
-          _clueOrder = finalClueOrder;
+          _clueOrder = clueOrderFromAdmin;
         });
       }
     } catch (e) {
@@ -98,61 +91,84 @@ class _Level3ScreenState extends State<Level3Screen> {
     }
   }
 
-  // --- THE FIX IS HERE: Standardized and more robust timer logic ---
   void _setupTimer() {
     _timerSubscription = _timerDocRef.snapshots().listen((timerSnap) {
       if (!mounted) return;
       final data = timerSnap.data();
       final endTime = (data?['endTime'] as Timestamp?)?.toDate();
       _countdownTimer?.cancel();
-
       if (endTime != null) {
-        // This block runs if the admin has started the timer
         setState(() => _timerNotStarted = false);
         final now = DateTime.now();
         if (endTime.isAfter(now)) {
-          // Timer is active and counting down
           _timeLeft = endTime.difference(now);
           _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
             final secondsLeft = _timeLeft.inSeconds - 1;
             if (secondsLeft < 0) {
               timer.cancel();
-              if (!_isSubmitting) _submitScore(autoSubmitted: true);
+              if (!_isSubmitting) {
+                _submitScore(autoSubmitted: true);
+              }
             } else if (mounted) {
               setState(() => _timeLeft = Duration(seconds: secondsLeft));
             }
           });
         } else {
-          // Timer has already expired
           setState(() => _timeLeft = Duration.zero);
-          if (!_isSubmitting) _submitScore(autoSubmitted: true);
+          if (!_isSubmitting) {
+            _submitScore(autoSubmitted: true);
+          }
         }
       } else {
-        // This block runs if the timer has NOT been started by the admin
         setState(() {
           _timeLeft = Duration.zero;
           _timerNotStarted = true;
         });
       }
-
       setState(() => _isLoading = false);
     });
   }
 
-  Future<void> _scanQRCode(Level3Clue currentClue) async {
+  // --- NEW LOGIC for handling the sequential game flow ---
+
+  Future<void> _scanQRCode(
+    Level3Clue clueToScan, {
+    bool isInitialScan = false,
+  }) async {
     final scannedValue = await Navigator.push<String>(
       context,
       MaterialPageRoute(builder: (context) => const QRScannerScreen()),
     );
-
     if (scannedValue == null) return;
 
-    if (scannedValue == currentClue.qrCodeValue) {
-      _showQuestionDialog(currentClue);
+    if (scannedValue == clueToScan.qrCodeValue) {
+      if (isInitialScan) {
+        // If it's the first scan, create the progress tracker for the team
+        final user = _authService.currentUser;
+        if (user == null) return;
+        await FirebaseFirestore.instance
+            .collection('teams')
+            .doc(user.uid)
+            .update({
+              'level3Progress': {
+                'solved': [],
+                'currentClueId': _clueOrder.first,
+              },
+            });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You have begun! Find your first destination.'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      } else {
+        // For all other scans, show the question dialog
+        _showQuestionDialog(clueToScan);
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Wrong QR Code! You are at the wrong location.'),
+          content: Text('Wrong QR Code!'),
           backgroundColor: Colors.red,
         ),
       );
@@ -204,11 +220,11 @@ class _Level3ScreenState extends State<Level3Screen> {
   Future<void> _markClueAsSolved(String solvedClueId) async {
     final user = _authService.currentUser;
     if (user == null) return;
-
     final teamRef = FirebaseFirestore.instance
         .collection('teams')
         .doc(user.uid);
 
+    // Use a transaction to safely read and update the team's progress
     await FirebaseFirestore.instance.runTransaction((transaction) async {
       final teamSnapshot = await transaction.get(teamRef);
       final currentProgress =
@@ -222,11 +238,13 @@ class _Level3ScreenState extends State<Level3Screen> {
       final nextClueIndex = _clueOrder.indexOf(solvedClueId) + 1;
 
       if (nextClueIndex >= _clueOrder.length) {
+        // Last clue solved
         transaction.update(teamRef, {
           'level3Progress.solved': solvedClues,
           'level3Progress.currentClueId': 'completed',
         });
       } else {
+        // Move to the next clue
         transaction.update(teamRef, {
           'level3Progress.solved': solvedClues,
           'level3Progress.currentClueId': _clueOrder[nextClueIndex],
@@ -236,7 +254,7 @@ class _Level3ScreenState extends State<Level3Screen> {
 
     final nextClueIndex = _clueOrder.indexOf(solvedClueId) + 1;
     if (nextClueIndex >= _clueOrder.length) {
-      _submitScore(autoSubmitted: false);
+      _submitScore(autoSubmitted: false); // Finished the hunt
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -303,6 +321,29 @@ class _Level3ScreenState extends State<Level3Screen> {
 
     bool canPlay = !_isLoading && !_timerNotStarted && _clueOrder.isNotEmpty;
 
+    if (!_isLoading && _clueOrder.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Level 3: The Final Chase'),
+          backgroundColor: Colors.transparent,
+        ),
+        body: Container(
+          decoration: const BoxDecoration(
+            image: DecorationImage(
+              image: AssetImage('assets/images/quiz_background.png'),
+              fit: BoxFit.cover,
+            ),
+          ),
+          child: const Center(
+            child: Text(
+              "Level 3 is not yet configured by the admin.",
+              style: TextStyle(color: Colors.white70, fontSize: 18),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Level 3: The Final Chase'),
@@ -344,17 +385,25 @@ class _Level3ScreenState extends State<Level3Screen> {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  final progress =
+                  final progressData =
                       snapshot.data!.data() as Map<String, dynamic>? ?? {};
                   final level3Progress =
-                      progress['level3Progress'] as Map<String, dynamic>?;
+                      progressData['level3Progress'] as Map<String, dynamic>?;
+
+                  if (level3Progress == null) {
+                    // State 1: User has not started Level 3 yet
+                    final initialClue = _allClues[_clueOrder.first]!;
+                    return _buildInitialScanScreen(initialClue);
+                  }
+
                   final solvedClues = List<String>.from(
-                    level3Progress?['solved'] ?? [],
+                    level3Progress['solved'] ?? [],
                   );
                   String currentClueId =
-                      level3Progress?['currentClueId'] ?? _clueOrder.first;
+                      level3Progress['currentClueId'] ?? _clueOrder.first;
 
                   if (currentClueId == 'completed') {
+                    // State 3: User has finished all clues
                     return const Center(
                       child: Text(
                         "Congratulations! You've finished Level 3.",
@@ -363,67 +412,16 @@ class _Level3ScreenState extends State<Level3Screen> {
                     );
                   }
 
+                  // State 2: User is in the middle of the hunt
                   final currentClue = _allClues[currentClueId]!;
+                  final lastSolvedDeptName = solvedClues.isEmpty
+                      ? null
+                      : _allClues[solvedClues.last]?.departmentName;
 
-                  return Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          'Clue ${solvedClues.length + 1}/${_clueOrder.length}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.amber,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          'Your Next Destination:',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.cinzel(
-                            fontSize: 22,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            // ignore: deprecated_member_use
-                            color: Colors.black.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            currentClue.nextClueLocationHint,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              color: Colors.white70,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 40),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.qr_code_scanner),
-                          label: const Text('Scan QR Code'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.amber,
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            textStyle: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          onPressed: () => _scanQRCode(currentClue),
-                        ),
-                      ],
-                    ),
+                  return _buildClueScreen(
+                    solvedClues,
+                    currentClue,
+                    lastSolvedDeptName,
                   );
                 },
               )
@@ -441,6 +439,158 @@ class _Level3ScreenState extends State<Level3Screen> {
                         ),
                       ),
               ),
+      ),
+    );
+  }
+
+  // --- Helper Widgets to build different UI states ---
+
+  Widget _buildInitialScanScreen(Level3Clue initialClue) {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Level 3 Begins',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.cinzel(
+              fontSize: 28,
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.black.withAlpha((0.3 * 255).round()),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              "Proceed to the starting location and scan the first QR code to begin your final chase!",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.white.withAlpha((0.7 * 255).round()),
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+          const SizedBox(height: 40),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('Scan to Begin'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              textStyle: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            onPressed: () => _scanQRCode(initialClue, isInitialScan: true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClueScreen(
+    List<String> solvedClues,
+    Level3Clue currentClue,
+    String? lastSolvedDeptName,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Clue ${solvedClues.length + 1}/${_clueOrder.length}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.amber,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Show the location they just confirmed
+          if (lastSolvedDeptName != null) ...[
+            Text(
+              'LOCATION CONFIRMED:',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.cinzel(
+                fontSize: 16,
+                color: Colors.greenAccent,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              lastSolvedDeptName,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 20,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const Divider(
+              color: Colors.white24,
+              height: 40,
+              indent: 40,
+              endIndent: 40,
+            ),
+          ],
+
+          // Show the hint for the NEXT location
+          Text(
+            solvedClues.isEmpty
+                ? 'YOUR FIRST DESTINATION:'
+                : 'YOUR NEXT DESTINATION:',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.cinzel(fontSize: 22, color: Colors.white),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.black.withAlpha((0.3 * 255).round()),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _allClues[_clueOrder[solvedClues.length]]?.nextClueLocationHint ??
+                  "Error: Hint not found.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.white.withAlpha((0.7 * 255).round()),
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+          const SizedBox(height: 40),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('Scan QR Code'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              textStyle: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            onPressed: () => _scanQRCode(currentClue),
+          ),
+        ],
       ),
     );
   }
