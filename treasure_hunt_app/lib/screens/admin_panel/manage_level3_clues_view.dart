@@ -8,7 +8,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:treasure_hunt_app/models/level3_clue_model.dart';
-import 'package:treasure_hunt_app/screens/game_panel/level3_leaderboard_view.dart'; // NEW IMPORT
+import 'package:treasure_hunt_app/screens/game_panel/level3_leaderboard_view.dart';
 
 class ManageLevel3CluesView extends StatefulWidget {
   const ManageLevel3CluesView({super.key});
@@ -23,8 +23,7 @@ class _ManageLevel3CluesViewState extends State<ManageLevel3CluesView> {
       .doc('level3')
       .collection('clues');
 
-  // Hardcoded list of departments
-  final Map<String, String> _departments = {
+  final Map<String, String> _allDepartments = const {
     'cse': 'B.Tech - CSE',
     'barch': 'B.Arch',
     'mech': 'Mechanical',
@@ -129,7 +128,6 @@ class _ManageLevel3CluesViewState extends State<ManageLevel3CluesView> {
 
   @override
   Widget build(BuildContext context) {
-    // UPDATED: Wrapped in a Column to add the button
     return Column(
       children: [
         Padding(
@@ -152,67 +150,96 @@ class _ManageLevel3CluesViewState extends State<ManageLevel3CluesView> {
           ),
         ),
         Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: _cluesCollection.snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
+          child: StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('game_settings')
+                .doc('level3_settings')
+                .snapshots(),
+            builder: (context, settingsSnapshot) {
+              // --- THE FIX IS HERE ---
+              // We create a default empty list.
+              List<String> activeDepartments = [];
+              // We only try to read the data IF the document actually exists.
+              if (settingsSnapshot.hasData && settingsSnapshot.data!.exists) {
+                final data =
+                    settingsSnapshot.data!.data() as Map<String, dynamic>? ??
+                    {};
+                activeDepartments = List<String>.from(
+                  data['activeDepartments'] ?? [],
+                );
               }
+              // If the document doesn't exist, `activeDepartments` remains an empty list, preventing the crash.
 
-              final clues = snapshot.hasData
-                  ? {
-                      for (var doc in snapshot.data!.docs)
-                        doc.id: Level3Clue.fromMap(
-                          doc.data() as Map<String, dynamic>,
-                          doc.id,
+              return StreamBuilder<QuerySnapshot>(
+                stream: _cluesCollection.snapshots(),
+                builder: (context, cluesSnapshot) {
+                  if (cluesSnapshot.connectionState ==
+                      ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final clues = cluesSnapshot.hasData
+                      ? {
+                          for (var doc in cluesSnapshot.data!.docs)
+                            doc.id: Level3Clue.fromMap(
+                              doc.data() as Map<String, dynamic>,
+                              doc.id,
+                            ),
+                        }
+                      : <String, Level3Clue>{};
+
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 90),
+                    children: _allDepartments.entries.map((entry) {
+                      final clueId = entry.key;
+                      final deptName = entry.value;
+                      final clue = clues[clueId];
+                      final bool isActive = activeDepartments.contains(clueId);
+
+                      return Card(
+                        color: isActive
+                            ? Colors.white.withOpacity(0.1)
+                            : Colors.black.withOpacity(0.2),
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
                         ),
-                    }
-                  : <String, Level3Clue>{};
-
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  8,
-                  0,
-                  8,
-                  90,
-                ), // Adjusted top padding
-                children: _departments.entries.map((entry) {
-                  final clueId = entry.key;
-                  final deptName = entry.value;
-                  final clue = clues[clueId];
-
-                  return Card(
-                    color: Colors.white.withOpacity(0.1),
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    child: ListTile(
-                      title: Text(
-                        deptName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                        child: ListTile(
+                          title: Text(
+                            deptName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: isActive ? Colors.white : Colors.grey,
+                            ),
+                          ),
+                          subtitle: Text(
+                            isActive
+                                ? (clue?.question ?? 'No question set yet.')
+                                : '(Inactive)',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: isActive
+                                  ? Colors.white.withOpacity(0.7)
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
+                          trailing: Icon(
+                            Icons.edit_outlined,
+                            color: isActive
+                                ? Colors.white70
+                                : Colors.grey.shade700,
+                          ),
+                          onTap: () => _showClueDialog(
+                            existingClue: clue,
+                            clueId: clueId,
+                            deptName: deptName,
+                          ),
                         ),
-                      ),
-                      subtitle: Text(
-                        clue?.question ?? 'No question set yet.',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Colors.white.withOpacity(0.7)),
-                      ),
-                      trailing: const Icon(
-                        Icons.edit_outlined,
-                        color: Colors.white70,
-                      ),
-                      onTap: () => _showClueDialog(
-                        existingClue: clue,
-                        clueId: clueId,
-                        deptName: deptName,
-                      ),
-                    ),
+                      );
+                    }).toList(),
                   );
-                }).toList(),
+                },
               );
             },
           ),

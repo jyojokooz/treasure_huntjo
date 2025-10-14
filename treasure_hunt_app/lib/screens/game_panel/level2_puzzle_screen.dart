@@ -31,12 +31,10 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
   bool _isLoading = true;
   bool _isSubmitting = false;
 
-  // This list will be filled with puzzles from Firestore.
   List<Puzzle> _puzzles = [];
   int _currentIndex = 0;
   int _score = 0;
 
-  // A map to store the user's answers. Key is puzzle ID, value is the submitted answer.
   final Map<String, String> _submittedAnswers = {};
 
   @override
@@ -53,13 +51,11 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     super.dispose();
   }
 
-  // Combines fetching puzzles and setting up the timer.
   Future<void> _initializeLevel() async {
     await _fetchPuzzles();
     _setupTimer();
   }
 
-  // Fetches the puzzles you created in the admin panel.
   Future<void> _fetchPuzzles() async {
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -72,7 +68,6 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
           _puzzles = snapshot.docs
               .map((doc) => Puzzle.fromMap(doc.data()))
               .toList();
-          // Randomize the puzzle order for each playthrough.
           _puzzles.shuffle();
         });
       }
@@ -81,6 +76,7 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     }
   }
 
+  // --- THE FIX IS HERE: Standardized and more robust timer logic ---
   void _setupTimer() {
     _timerSubscription = _timerDocRef.snapshots().listen((timerSnap) {
       if (!mounted) return;
@@ -89,9 +85,11 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
       _countdownTimer?.cancel();
 
       if (endTime != null) {
+        // This block runs if the admin has started the timer
         setState(() => _timerNotStarted = false);
         final now = DateTime.now();
         if (endTime.isAfter(now)) {
+          // Timer is active and counting down
           _timeLeft = endTime.difference(now);
           _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
             final secondsLeft = _timeLeft.inSeconds - 1;
@@ -103,11 +101,16 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
             }
           });
         } else {
+          // Timer has already expired
           setState(() => _timeLeft = Duration.zero);
           if (!_isSubmitting) _submitScore(autoSubmitted: true);
         }
       } else {
-        setState(() => _timerNotStarted = true);
+        // This block runs if the timer has NOT been started by the admin
+        setState(() {
+          _timeLeft = Duration.zero;
+          _timerNotStarted = true;
+        });
       }
 
       setState(() => _isLoading = false);
@@ -115,13 +118,12 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
   }
 
   void _checkAnswer() {
-    if (_puzzles.isEmpty) return; // Guard against empty puzzle list
+    if (_puzzles.isEmpty) return;
 
     final submittedAnswer = _textController.text.trim().toUpperCase();
     final currentPuzzle = _puzzles[_currentIndex];
     final correctAnswer = currentPuzzle.correctAnswer;
 
-    // Record the user's answer for the detailed breakdown
     _submittedAnswers[currentPuzzle.id] = submittedAnswer.isEmpty
         ? "SKIPPED"
         : submittedAnswer;
@@ -160,7 +162,6 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     _countdownTimer?.cancel();
     _timerSubscription?.cancel();
 
-    // When time runs out, mark any unanswered questions
     if (autoSubmitted) {
       for (final puzzle in _puzzles) {
         if (!_submittedAnswers.containsKey(puzzle.id)) {
@@ -173,7 +174,7 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
       'score': _score,
       'totalQuestions': _puzzles.length,
       'submittedAt': Timestamp.now(),
-      'answers': _submittedAnswers, // Save the detailed answers map
+      'answers': _submittedAnswers,
     };
 
     final user = _authService.currentUser;

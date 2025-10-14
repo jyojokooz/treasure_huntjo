@@ -29,6 +29,7 @@ class _Level3ScreenState extends State<Level3Screen> {
   StreamSubscription? _timerSubscription;
   Timer? _countdownTimer;
   Duration _timeLeft = Duration.zero;
+  bool _timerNotStarted = false; // Added state
 
   bool _isLoading = true;
   bool _isSubmitting = false;
@@ -49,59 +50,92 @@ class _Level3ScreenState extends State<Level3Screen> {
   }
 
   Future<void> _initializeLevel() async {
-    await _fetchClues();
+    await _fetchLevel3SettingsAndClues();
     _setupTimer();
-    setState(() => _isLoading = false);
+    // Removed setState for isLoading here, it's handled in the timer setup
   }
 
-  Future<void> _fetchClues() async {
+  Future<void> _fetchLevel3SettingsAndClues() async {
     try {
+      final settingsDoc = await FirebaseFirestore.instance
+          .collection('game_settings')
+          .doc('level3_settings')
+          .get();
+      final activeDepartments = List<String>.from(
+        settingsDoc.data()?['activeDepartments'] ?? [],
+      );
+
+      if (activeDepartments.isEmpty) {
+        if (mounted) setState(() => _clueOrder = []);
+        return;
+      }
+
       final snapshot = await FirebaseFirestore.instance
           .collection('game_content/level3/clues')
           .get();
-      // Define the fixed order of departments
-      const definedOrder = ['cse', 'barch', 'mech', 'ece', 'eee', 'rai', 'mca'];
       final fetchedClues = {
         for (var doc in snapshot.docs)
           doc.id: Level3Clue.fromMap(doc.data(), doc.id),
       };
 
+      const definedOrder = ['cse', 'barch', 'mech', 'ece', 'eee', 'rai', 'mca'];
+
+      final finalClueOrder = definedOrder
+          .where(
+            (id) =>
+                activeDepartments.contains(id) && fetchedClues.containsKey(id),
+          )
+          .toList();
+
       if (mounted) {
         setState(() {
           _allClues = fetchedClues;
-          // Filter and sort the clue IDs based on the defined order and availability
-          _clueOrder = definedOrder
-              .where((id) => _allClues.containsKey(id))
-              .toList();
+          _clueOrder = finalClueOrder;
         });
       }
     } catch (e) {
-      debugPrint("Error fetching clues: $e");
+      debugPrint("Error fetching clues or settings: $e");
     }
   }
 
+  // --- THE FIX IS HERE: Standardized and more robust timer logic ---
   void _setupTimer() {
     _timerSubscription = _timerDocRef.snapshots().listen((timerSnap) {
       if (!mounted) return;
-      final endTime = (timerSnap.data()?['endTime'] as Timestamp?)?.toDate();
+      final data = timerSnap.data();
+      final endTime = (data?['endTime'] as Timestamp?)?.toDate();
       _countdownTimer?.cancel();
 
-      if (endTime != null && endTime.isAfter(DateTime.now())) {
-        _timeLeft = endTime.difference(DateTime.now());
-        _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-          if (_timeLeft.inSeconds <= 0) {
-            timer.cancel();
-            if (!_isSubmitting) _submitScore(autoSubmitted: true);
-          } else if (mounted) {
-            setState(
-              () => _timeLeft = Duration(seconds: _timeLeft.inSeconds - 1),
-            );
-          }
+      if (endTime != null) {
+        // This block runs if the admin has started the timer
+        setState(() => _timerNotStarted = false);
+        final now = DateTime.now();
+        if (endTime.isAfter(now)) {
+          // Timer is active and counting down
+          _timeLeft = endTime.difference(now);
+          _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+            final secondsLeft = _timeLeft.inSeconds - 1;
+            if (secondsLeft < 0) {
+              timer.cancel();
+              if (!_isSubmitting) _submitScore(autoSubmitted: true);
+            } else if (mounted) {
+              setState(() => _timeLeft = Duration(seconds: secondsLeft));
+            }
+          });
+        } else {
+          // Timer has already expired
+          setState(() => _timeLeft = Duration.zero);
+          if (!_isSubmitting) _submitScore(autoSubmitted: true);
+        }
+      } else {
+        // This block runs if the timer has NOT been started by the admin
+        setState(() {
+          _timeLeft = Duration.zero;
+          _timerNotStarted = true;
         });
-      } else if (endTime != null) {
-        _timeLeft = Duration.zero;
-        if (!_isSubmitting) _submitScore(autoSubmitted: true);
       }
+
+      setState(() => _isLoading = false);
     });
   }
 
@@ -111,7 +145,7 @@ class _Level3ScreenState extends State<Level3Screen> {
       MaterialPageRoute(builder: (context) => const QRScannerScreen()),
     );
 
-    if (scannedValue == null) return; // User backed out
+    if (scannedValue == null) return;
 
     if (scannedValue == currentClue.qrCodeValue) {
       _showQuestionDialog(currentClue);
@@ -175,7 +209,6 @@ class _Level3ScreenState extends State<Level3Screen> {
         .collection('teams')
         .doc(user.uid);
 
-    // Use a transaction to safely update the progress
     await FirebaseFirestore.instance.runTransaction((transaction) async {
       final teamSnapshot = await transaction.get(teamRef);
       final currentProgress =
@@ -189,7 +222,6 @@ class _Level3ScreenState extends State<Level3Screen> {
       final nextClueIndex = _clueOrder.indexOf(solvedClueId) + 1;
 
       if (nextClueIndex >= _clueOrder.length) {
-        // Last clue solved
         transaction.update(teamRef, {
           'level3Progress.solved': solvedClues,
           'level3Progress.currentClueId': 'completed',
@@ -269,6 +301,8 @@ class _Level3ScreenState extends State<Level3Screen> {
       return const Scaffold(body: Center(child: Text("Error: Not logged in")));
     }
 
+    bool canPlay = !_isLoading && !_timerNotStarted && _clueOrder.isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Level 3: The Final Chase'),
@@ -299,9 +333,8 @@ class _Level3ScreenState extends State<Level3Screen> {
             fit: BoxFit.cover,
           ),
         ),
-        child: _isLoading || _clueOrder.isEmpty
-            ? const Center(child: CircularProgressIndicator())
-            : StreamBuilder<DocumentSnapshot>(
+        child: canPlay
+            ? StreamBuilder<DocumentSnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('teams')
                     .doc(user.uid)
@@ -393,6 +426,20 @@ class _Level3ScreenState extends State<Level3Screen> {
                     ),
                   );
                 },
+              )
+            : Center(
+                child: _isLoading
+                    ? const CircularProgressIndicator()
+                    : Text(
+                        _timerNotStarted
+                            ? "Waiting for the admin to start the timer..."
+                            : "No active departments configured for Level 3.",
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 18,
+                        ),
+                      ),
               ),
       ),
     );
