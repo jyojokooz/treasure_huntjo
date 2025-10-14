@@ -8,6 +8,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:treasure_hunt_app/models/level3_clue_model.dart';
+import 'package:treasure_hunt_app/screens/game_panel/level3_leaderboard_view.dart'; // NEW IMPORT
 
 class ManageLevel3CluesView extends StatefulWidget {
   const ManageLevel3CluesView({super.key});
@@ -128,61 +129,95 @@ class _ManageLevel3CluesViewState extends State<ManageLevel3CluesView> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _cluesCollection.snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final clues = snapshot.hasData
-            ? {
-                for (var doc in snapshot.data!.docs)
-                  doc.id: Level3Clue.fromMap(
-                    doc.data() as Map<String, dynamic>,
-                    doc.id,
+    // UPDATED: Wrapped in a Column to add the button
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.leaderboard_outlined),
+              label: const Text('View Level 3 Leaderboard'),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        const Level3LeaderboardView(isAdminView: true),
                   ),
+                );
+              },
+            ),
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: _cluesCollection.snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
               }
-            : <String, Level3Clue>{};
 
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 90),
-          children: _departments.entries.map((entry) {
-            final clueId = entry.key;
-            final deptName = entry.value;
-            final clue = clues[clueId];
+              final clues = snapshot.hasData
+                  ? {
+                      for (var doc in snapshot.data!.docs)
+                        doc.id: Level3Clue.fromMap(
+                          doc.data() as Map<String, dynamic>,
+                          doc.id,
+                        ),
+                    }
+                  : <String, Level3Clue>{};
 
-            return Card(
-              color: Colors.white.withOpacity(0.1),
-              margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              child: ListTile(
-                title: Text(
-                  deptName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                subtitle: Text(
-                  clue?.question ?? 'No question set yet.',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Colors.white.withOpacity(0.7)),
-                ),
-                trailing: const Icon(
-                  Icons.edit_outlined,
-                  color: Colors.white70,
-                ),
-                onTap: () => _showClueDialog(
-                  existingClue: clue,
-                  clueId: clueId,
-                  deptName: deptName,
-                ),
-              ),
-            );
-          }).toList(),
-        );
-      },
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  8,
+                  0,
+                  8,
+                  90,
+                ), // Adjusted top padding
+                children: _departments.entries.map((entry) {
+                  final clueId = entry.key;
+                  final deptName = entry.value;
+                  final clue = clues[clueId];
+
+                  return Card(
+                    color: Colors.white.withOpacity(0.1),
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    child: ListTile(
+                      title: Text(
+                        deptName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      subtitle: Text(
+                        clue?.question ?? 'No question set yet.',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                      ),
+                      trailing: const Icon(
+                        Icons.edit_outlined,
+                        color: Colors.white70,
+                      ),
+                      onTap: () => _showClueDialog(
+                        existingClue: clue,
+                        clueId: clueId,
+                        deptName: deptName,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

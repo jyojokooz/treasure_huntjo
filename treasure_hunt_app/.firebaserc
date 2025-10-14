@@ -1,5 +1,7 @@
 {
   "projects": {
     "default": "treasure-hunt-app-5dfbf"
-  }
+  },
+  "targets": {},
+  "etags": {}
 }
