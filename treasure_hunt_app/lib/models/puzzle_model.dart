@@ -3,34 +3,53 @@
 // FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\models\puzzle_model.dart
 // ===============================
 
+enum PuzzleType { scramble, riddle, math, quiz }
+
 class Puzzle {
   final String id;
-  final String scrambledWord;
+  final PuzzleType type;
+  final String prompt;
   final String correctAnswer;
+  final List<String>? options;
+  final String? mediaUrl; // NEW: Optional field for an image URL.
 
   Puzzle({
     required this.id,
-    required this.scrambledWord,
+    required this.type,
+    required this.prompt,
     required this.correctAnswer,
+    this.options,
+    this.mediaUrl, // NEW: Add to constructor.
   });
 
-  // Convert a Puzzle object into a map.
-  // This is used when writing data to Firestore.
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'scrambledWord': scrambledWord,
+      'type': type.name,
+      'prompt': prompt,
       'correctAnswer': correctAnswer,
+      'options': options,
+      'mediaUrl': mediaUrl, // NEW: Add to map.
     };
   }
 
-  // Create a Puzzle object from a map (a Firestore document).
-  // This is used when reading data from Firestore.
   factory Puzzle.fromMap(Map<String, dynamic> map) {
+    PuzzleType typeFromString(String? typeName) {
+      return PuzzleType.values.firstWhere(
+        (e) => e.name == typeName,
+        orElse: () => PuzzleType.riddle,
+      );
+    }
+
     return Puzzle(
       id: map['id'] ?? '',
-      scrambledWord: map['scrambledWord'] ?? '',
+      type: typeFromString(map['type']),
+      prompt: map['prompt'] ?? map['scrambledWord'] ?? '',
       correctAnswer: map['correctAnswer'] ?? '',
+      options: map['options'] != null
+          ? List<String>.from(map['options'])
+          : null,
+      mediaUrl: map['mediaUrl'] as String?, // NEW: Read from map.
     );
   }
 }

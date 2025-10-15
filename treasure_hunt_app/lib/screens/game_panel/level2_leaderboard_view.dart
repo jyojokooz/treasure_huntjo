@@ -318,9 +318,6 @@ class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
   }
 }
 
-// =======================================================================
-// The dedicated details screen, styled to match the Level 1 version
-// =======================================================================
 class _Level2TeamDetailsScreen extends StatefulWidget {
   final Team team;
   const _Level2TeamDetailsScreen({required this.team});
@@ -474,7 +471,8 @@ class _Level2TeamDetailsScreenState extends State<_Level2TeamDetailsScreen> {
 
                   final allPuzzles = snapshot.data!;
                   allPuzzles.sort(
-                    (a, b) => a.scrambledWord.compareTo(b.scrambledWord),
+                    // FIX: Changed scrambledWord to prompt for sorting
+                    (a, b) => a.prompt.compareTo(b.prompt),
                   );
 
                   return Column(
@@ -489,9 +487,8 @@ class _Level2TeamDetailsScreenState extends State<_Level2TeamDetailsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              '${index + 1}. Unscramble: ${puzzle.scrambledWord}',
-                            ),
+                            // FIX: Changed scrambledWord to prompt for display
+                            Text('${index + 1}. Unscramble: ${puzzle.prompt}'),
                             const SizedBox(height: 4),
                             Row(
                               children: [

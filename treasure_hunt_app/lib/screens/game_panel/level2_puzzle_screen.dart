@@ -34,6 +34,7 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
   List<Puzzle> _puzzles = [];
   int _currentIndex = 0;
   int _score = 0;
+  int? _selectedQuizOption;
 
   final Map<String, String> _submittedAnswers = {};
 
@@ -59,9 +60,7 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
   Future<void> _fetchPuzzles() async {
     try {
       final snapshot = await FirebaseFirestore.instance
-          .collection('game_content')
-          .doc('level2')
-          .collection('puzzles')
+          .collection('game_content/level2/puzzles')
           .get();
       if (mounted) {
         setState(() {
@@ -76,20 +75,16 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     }
   }
 
-  // --- THE FIX IS HERE: Standardized and more robust timer logic ---
   void _setupTimer() {
     _timerSubscription = _timerDocRef.snapshots().listen((timerSnap) {
       if (!mounted) return;
       final data = timerSnap.data();
       final endTime = (data?['endTime'] as Timestamp?)?.toDate();
       _countdownTimer?.cancel();
-
       if (endTime != null) {
-        // This block runs if the admin has started the timer
         setState(() => _timerNotStarted = false);
         final now = DateTime.now();
         if (endTime.isAfter(now)) {
-          // Timer is active and counting down
           _timeLeft = endTime.difference(now);
           _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
             final secondsLeft = _timeLeft.inSeconds - 1;
@@ -101,29 +96,31 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
             }
           });
         } else {
-          // Timer has already expired
           setState(() => _timeLeft = Duration.zero);
           if (!_isSubmitting) _submitScore(autoSubmitted: true);
         }
       } else {
-        // This block runs if the timer has NOT been started by the admin
         setState(() {
           _timeLeft = Duration.zero;
           _timerNotStarted = true;
         });
       }
-
       setState(() => _isLoading = false);
     });
   }
 
-  void _checkAnswer() {
+  void _checkAnswer({String? quizAnswer}) {
     if (_puzzles.isEmpty) return;
-
-    final submittedAnswer = _textController.text.trim().toUpperCase();
     final currentPuzzle = _puzzles[_currentIndex];
-    final correctAnswer = currentPuzzle.correctAnswer;
 
+    String submittedAnswer;
+    if (currentPuzzle.type == PuzzleType.quiz) {
+      submittedAnswer = quizAnswer ?? "SKIPPED";
+    } else {
+      submittedAnswer = _textController.text.trim().toUpperCase();
+    }
+
+    final correctAnswer = currentPuzzle.correctAnswer.toUpperCase();
     _submittedAnswers[currentPuzzle.id] = submittedAnswer.isEmpty
         ? "SKIPPED"
         : submittedAnswer;
@@ -147,7 +144,12 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
       );
     }
 
+    _moveToNext();
+  }
+
+  void _moveToNext() {
     _textController.clear();
+    setState(() => _selectedQuizOption = null);
 
     if (_currentIndex < _puzzles.length - 1) {
       setState(() => _currentIndex++);
@@ -161,7 +163,6 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     setState(() => _isSubmitting = true);
     _countdownTimer?.cancel();
     _timerSubscription?.cancel();
-
     if (autoSubmitted) {
       for (final puzzle in _puzzles) {
         if (!_submittedAnswers.containsKey(puzzle.id)) {
@@ -169,21 +170,18 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
         }
       }
     }
-
     final submissionData = {
       'score': _score,
       'totalQuestions': _puzzles.length,
       'submittedAt': Timestamp.now(),
       'answers': _submittedAnswers,
     };
-
     final user = _authService.currentUser;
     if (user != null) {
       await FirebaseFirestore.instance.collection('teams').doc(user.uid).update(
         {'level2Submission': submissionData},
       );
     }
-
     if (mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -199,15 +197,217 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     }
   }
 
+  // REWRITE: This now includes the media display logic.
+  Widget _buildPuzzleUI(Puzzle puzzle) {
+    return Column(
+      children: [
+        // NEW: Conditionally display the image if the URL exists.
+        if (puzzle.mediaUrl != null && puzzle.mediaUrl!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 24.0),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                puzzle.mediaUrl!,
+                height: 180,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) {
+                  return progress == null
+                      ? child
+                      : const Center(child: CircularProgressIndicator());
+                },
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                  Icons.broken_image,
+                  size: 50,
+                  color: Colors.grey,
+                ),
+              ),
+            ),
+          ),
+        // The rest of the UI is built based on the puzzle type
+        Builder(
+          builder: (context) {
+            switch (puzzle.type) {
+              case PuzzleType.quiz:
+                return _buildQuizPuzzle(puzzle);
+              case PuzzleType.scramble:
+                return _buildScramblePuzzle(puzzle);
+              case PuzzleType.riddle:
+              case PuzzleType.math:
+                return _buildTextPuzzle(puzzle);
+            }
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuizPuzzle(Puzzle puzzle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          puzzle.prompt,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.cinzel(fontSize: 22, color: Colors.white),
+        ),
+        const SizedBox(height: 32),
+        ...List.generate(puzzle.options!.length, (optionIndex) {
+          bool isSelected = _selectedQuizOption == optionIndex;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6.0),
+            child: OutlinedButton(
+              onPressed: () {
+                setState(() => _selectedQuizOption = optionIndex);
+                Future.delayed(
+                  const Duration(milliseconds: 300),
+                  () => _checkAnswer(
+                    quizAnswer: puzzle.options![optionIndex].toUpperCase(),
+                  ),
+                );
+              },
+              style: OutlinedButton.styleFrom(
+                backgroundColor: isSelected
+                    ? Colors.amber.withAlpha(50)
+                    : Colors.black.withAlpha(75),
+                side: BorderSide(
+                  color: isSelected ? Colors.amber : Colors.grey.shade700,
+                  width: 2,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 18,
+                  horizontal: 16,
+                ),
+              ),
+              child: Text(
+                puzzle.options![optionIndex],
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: isSelected
+                      ? Colors.amber
+                      : Colors.white.withAlpha((0.8 * 255).round()),
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildTextPuzzle(Puzzle puzzle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          puzzle.prompt,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.cinzel(fontSize: 22, color: Colors.white),
+        ),
+        const SizedBox(height: 40),
+        _buildAnswerTextField(),
+        const SizedBox(height: 30),
+        _buildSubmitButton(),
+      ],
+    );
+  }
+
+  Widget _buildScramblePuzzle(Puzzle puzzle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Unscramble the word:',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.cinzel(fontSize: 22, color: Colors.white),
+        ),
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            // ignore: deprecated_member_use
+            color: Colors.black.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            puzzle.prompt,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.bangers(
+              fontSize: 50,
+              color: Colors.white,
+              letterSpacing: 8,
+            ),
+          ),
+        ),
+        const SizedBox(height: 40),
+        _buildAnswerTextField(isScramble: true),
+        const SizedBox(height: 30),
+        _buildSubmitButton(),
+      ],
+    );
+  }
+
+  Widget _buildAnswerTextField({bool isScramble = false}) {
+    return TextField(
+      controller: _textController,
+      textAlign: TextAlign.center,
+      autocorrect: false,
+      enableSuggestions: false,
+      textCapitalization: isScramble
+          ? TextCapitalization.characters
+          : TextCapitalization.none,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 24,
+        fontWeight: FontWeight.bold,
+      ),
+      decoration: InputDecoration(
+        hintText: 'YOUR ANSWER',
+        hintStyle: TextStyle(
+          color: Colors.white.withAlpha((0.5 * 255).round()),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade600),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.amber, width: 2),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSubmitButton() {
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.amber,
+        foregroundColor: Colors.black,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      onPressed: _isSubmitting ? null : () => _checkAnswer(),
+      child: Text(
+        _currentIndex < _puzzles.length - 1
+            ? 'Submit Answer'
+            : 'Submit Final Answer',
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final minutes = twoDigits(_timeLeft.inMinutes.remainder(60));
     final seconds = twoDigits(_timeLeft.inSeconds.remainder(60));
     final timeString = '$minutes:$seconds';
-
-    final bool canPlay =
-        !_isLoading && !_timerNotStarted && _puzzles.isNotEmpty;
+    final canPlay = !_isLoading && !_timerNotStarted && _puzzles.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -240,101 +440,24 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
           ),
         ),
         child: canPlay
-            ? Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Puzzle ${_currentIndex + 1}/${_puzzles.length}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.amber,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Unscramble the word:',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.cinzel(
-                        fontSize: 22,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        // ignore: deprecated_member_use
-                        color: Colors.black.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        _puzzles[_currentIndex].scrambledWord,
+            ? SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Puzzle ${_currentIndex + 1}/${_puzzles.length}',
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.bangers(
-                          fontSize: 50,
-                          color: Colors.white,
-                          letterSpacing: 8,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-                    TextField(
-                      controller: _textController,
-                      textAlign: TextAlign.center,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      textCapitalization: TextCapitalization.characters,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'YOUR ANSWER',
-                        hintStyle: TextStyle(
-                          // ignore: deprecated_member_use
-                          color: Colors.white.withOpacity(0.5),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade600),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                            color: Colors.amber,
-                            width: 2,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.amber,
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onPressed: _isSubmitting ? null : _checkAnswer,
-                      child: Text(
-                        _currentIndex < _puzzles.length - 1
-                            ? 'Submit Answer'
-                            : 'Submit Final Answer',
                         style: const TextStyle(
+                          color: Colors.amber,
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 20),
+                      _buildPuzzleUI(_puzzles[_currentIndex]),
+                    ],
+                  ),
                 ),
               )
             : Center(
