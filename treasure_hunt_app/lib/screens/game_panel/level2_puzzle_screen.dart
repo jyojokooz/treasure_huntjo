@@ -3,14 +3,13 @@
 // FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\game_panel\level2_puzzle_screen.dart
 // ===============================
 
-// ignore_for_file: deprecated_member_use
-
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:treasure_hunt_app/models/puzzle_model.dart';
 import 'package:treasure_hunt_app/services/auth_service.dart';
+import 'package:treasure_hunt_app/services/music_service.dart';
 import 'package:video_player/video_player.dart';
 
 class Level2PuzzleScreen extends StatefulWidget {
@@ -44,11 +43,13 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
   @override
   void initState() {
     super.initState();
+    MusicService.instance.pauseBackgroundMusic();
     _initializeLevel();
   }
 
   @override
   void dispose() {
+    MusicService.instance.resumeBackgroundMusic();
     _timerSubscription?.cancel();
     _countdownTimer?.cancel();
     _textController.dispose();
@@ -333,11 +334,12 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
         ),
         const SizedBox(height: 20),
         Container(
-          padding: const EdgeInsets.all(16),
+          // FIX: Replaced deprecated withOpacity
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withAlpha((0.3 * 255).round()),
             borderRadius: BorderRadius.circular(12),
           ),
+          padding: const EdgeInsets.all(16),
           child: Text(
             puzzle.prompt,
             textAlign: TextAlign.center,
@@ -484,7 +486,6 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
   }
 }
 
-// --- WIDGET REWRITE: A much more robust and diagnostic-friendly video player ---
 class _VideoPlayerWidget extends StatefulWidget {
   final String url;
   const _VideoPlayerWidget({super.key, required this.url});
@@ -495,43 +496,35 @@ class _VideoPlayerWidget extends StatefulWidget {
 
 class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
   late VideoPlayerController _controller;
+  late Future<void> _initializeVideoPlayerFuture;
   bool _isPlaying = true;
-  bool _hasError = false;
+  // FIX: This field is no longer used, so it has been removed.
+  // bool _hasError = false;
 
   @override
   void initState() {
     super.initState();
-
-    // --- DIAGNOSTIC STEP ---
-    // This will print the exact URL to your debug console.
     debugPrint("--- VIDEO PLAYER ATTEMPTING TO LOAD ---");
     debugPrint("URL: ${widget.url}");
-    // --- END DIAGNOSTIC STEP ---
 
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
-      ..initialize()
-          .then((_) {
-            // This block executes once the video is successfully loaded.
-            if (mounted) {
-              setState(() {
-                _controller.setLooping(true);
-                _controller.play();
-                _isPlaying = true;
-                _hasError = false;
-              });
-            }
-          })
-          .catchError((error, stackTrace) {
-            // This block executes if the video fails to load.
-            debugPrint("--- VIDEO PLAYER FAILED TO LOAD ---");
-            debugPrint("Error: $error");
-            debugPrint("URL was: ${widget.url}");
-            if (mounted) {
-              setState(() {
-                _hasError = true;
-              });
-            }
-          });
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    _initializeVideoPlayerFuture = _controller
+        .initialize()
+        .then((_) {
+          if (mounted) {
+            setState(() {
+              _controller.setLooping(true);
+              _controller.play();
+              _isPlaying = true;
+            });
+          }
+        })
+        .catchError((error) {
+          debugPrint("--- VIDEO PLAYER FAILED TO LOAD ---");
+          debugPrint("Error: $error");
+          debugPrint("URL was: ${widget.url}");
+          // The FutureBuilder will catch this error, so we don't need a separate flag.
+        });
   }
 
   @override
@@ -554,53 +547,62 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (_hasError) {
-      return const SizedBox(
-        height: 180,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
-              SizedBox(height: 8),
-              Text(
-                "Could not load video",
-                style: TextStyle(color: Colors.white70),
+    return FutureBuilder(
+      future: _initializeVideoPlayerFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done) {
+          if (snapshot.hasError || !_controller.value.isInitialized) {
+            return const SizedBox(
+              height: 180,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Colors.redAccent,
+                      size: 48,
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      "Could not load video",
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-        ),
-      );
-    }
+            );
+          }
 
-    if (!_controller.value.isInitialized) {
-      return const SizedBox(
-        height: 180,
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    return AspectRatio(
-      aspectRatio: _controller.value.aspectRatio,
-      child: GestureDetector(
-        onTap: _togglePlayPause,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            VideoPlayer(_controller),
-            // Show a play/pause icon overlay.
-            AnimatedOpacity(
-              opacity: _isPlaying ? 0.0 : 1.0,
-              duration: const Duration(milliseconds: 300),
-              child: Icon(
-                Icons.play_arrow,
-                color: Colors.white.withOpacity(0.8),
-                size: 64,
+          return AspectRatio(
+            aspectRatio: _controller.value.aspectRatio,
+            child: GestureDetector(
+              onTap: _togglePlayPause,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  VideoPlayer(_controller),
+                  AnimatedOpacity(
+                    opacity: _isPlaying ? 0.0 : 1.0,
+                    duration: const Duration(milliseconds: 300),
+                    child: Icon(
+                      Icons.play_arrow,
+                      // FIX: Replaced deprecated withOpacity
+                      color: Colors.white.withAlpha((0.8 * 255).round()),
+                      size: 64,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
+          );
+        } else {
+          return const SizedBox(
+            height: 180,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+      },
     );
   }
 }

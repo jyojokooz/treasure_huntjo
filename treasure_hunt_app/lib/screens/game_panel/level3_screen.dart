@@ -12,6 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:treasure_hunt_app/models/level3_clue_model.dart';
 import 'package:treasure_hunt_app/screens/game_panel/qr_scanner_screen.dart';
 import 'package:treasure_hunt_app/services/auth_service.dart';
+import 'package:treasure_hunt_app/services/music_service.dart';
 
 class Level3Screen extends StatefulWidget {
   const Level3Screen({super.key});
@@ -25,8 +26,6 @@ class _Level3ScreenState extends State<Level3Screen> {
       .collection('game_settings')
       .doc('level3_timer');
   final _authService = AuthService();
-
-  // --- THE FIX: Define the controller here so it persists across rebuilds ---
   late final TextEditingController _initialAnswerController;
 
   StreamSubscription? _timerSubscription;
@@ -42,16 +41,16 @@ class _Level3ScreenState extends State<Level3Screen> {
   @override
   void initState() {
     super.initState();
-    // --- THE FIX: Initialize the controller once ---
+    MusicService.instance.pauseBackgroundMusic();
     _initialAnswerController = TextEditingController();
     _initializeLevel();
   }
 
   @override
   void dispose() {
+    MusicService.instance.resumeBackgroundMusic();
     _timerSubscription?.cancel();
     _countdownTimer?.cancel();
-    // --- THE FIX: Dispose of the controller to prevent memory leaks ---
     _initialAnswerController.dispose();
     super.dispose();
   }
@@ -323,7 +322,6 @@ class _Level3ScreenState extends State<Level3Screen> {
               progressData['level3Progress'] as Map<String, dynamic>?;
 
           if (level3Progress == null) {
-            // --- THE FIX: Pass the persistent controller to the build method ---
             return _buildQuestionScreen(
               _allClues['starting_point']!,
               _initialAnswerController,
@@ -384,7 +382,6 @@ class _Level3ScreenState extends State<Level3Screen> {
     );
   }
 
-  // --- THE FIX: Accept the controller as a parameter ---
   Widget _buildQuestionScreen(
     Level3Clue clue,
     TextEditingController answerController,
@@ -421,14 +418,12 @@ class _Level3ScreenState extends State<Level3Screen> {
             ),
             const SizedBox(height: 40),
             TextField(
-              // --- THE FIX: Use the passed-in controller ---
               controller: answerController,
               decoration: const InputDecoration(labelText: 'Your Answer'),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              // --- THE FIX: Read the text from the passed-in controller ---
               onPressed: () =>
                   _handleStartingPointAnswer(answerController.text),
               child: const Text('Submit Answer'),

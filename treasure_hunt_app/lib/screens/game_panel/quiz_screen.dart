@@ -1,4 +1,7 @@
-// lib/screens/game_panel/quiz_screen.dart
+// ===============================
+// FILE NAME: quiz_screen.dart
+// FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\game_panel\quiz_screen.dart
+// ===============================
 
 // ignore_for_file: deprecated_member_use
 
@@ -7,8 +10,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:treasure_hunt_app/models/quiz_model.dart';
-// FIX: Removed unused 'auth_service.dart' import.
-import 'package:treasure_hunt_app/services/auth_service.dart'; // Keep auth_service for user ID
+import 'package:treasure_hunt_app/services/auth_service.dart';
+import 'package:treasure_hunt_app/services/music_service.dart'; // NEW: Import MusicService
 
 class QuizScreen extends StatefulWidget {
   const QuizScreen({super.key});
@@ -17,17 +20,13 @@ class QuizScreen extends StatefulWidget {
 }
 
 class _QuizScreenState extends State<QuizScreen> {
-  // FIX: These fields are only assigned once, so they can be 'final'.
   final PageController _pageController = PageController();
   final Map<int, int> _selectedAnswers = {};
 
-  // FIX: This field is no longer used directly here, but within the listener.
-  // It's good practice to keep the reference if needed for other methods.
   final _timerDocRef = FirebaseFirestore.instance
       .collection('game_settings')
       .doc('level1_timer');
 
-  // These variables change over time, so they cannot be final.
   StreamSubscription? _timerSubscription;
   Timer? _countdownTimer;
   Duration _timeLeft = Duration.zero;
@@ -39,13 +38,18 @@ class _QuizScreenState extends State<QuizScreen> {
   @override
   void initState() {
     super.initState();
+    // THE FIX: Pause music when entering the level.
+    MusicService.instance.pauseBackgroundMusic();
     _fetchQuestionsAndSetupTimer();
   }
 
   @override
   void dispose() {
+    // THE FIX: Resume music when leaving the level.
+    MusicService.instance.resumeBackgroundMusic();
     _timerSubscription?.cancel();
     _countdownTimer?.cancel();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -71,7 +75,7 @@ class _QuizScreenState extends State<QuizScreen> {
             if (secondsLeft < 0) {
               timer.cancel();
               if (!_isSubmitting) _submitAnswers(autoSubmitted: true);
-            } else {
+            } else if (mounted) {
               setState(() => _timeLeft = Duration(seconds: secondsLeft));
             }
           });
@@ -87,15 +91,16 @@ class _QuizScreenState extends State<QuizScreen> {
       }
     });
 
-    setState(() {
-      _questions = questionsSnapshot.docs
-          .map((doc) => QuizQuestion.fromMap(doc.data()))
-          .toList();
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _questions = questionsSnapshot.docs
+            .map((doc) => QuizQuestion.fromMap(doc.data()))
+            .toList();
+        _isLoading = false;
+      });
+    }
   }
 
-  // FIX: Removed the unused 'autoSubmitted' parameter.
   Future<void> _submitAnswers({bool autoSubmitted = false}) async {
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
@@ -116,7 +121,6 @@ class _QuizScreenState extends State<QuizScreen> {
       'answers': _selectedAnswers.map((k, v) => MapEntry(k.toString(), v)),
     };
 
-    // Use AuthService here to get the current user ID for the database update.
     final user = AuthService().currentUser;
     if (user != null) {
       await FirebaseFirestore.instance.collection('teams').doc(user.uid).update(
@@ -261,7 +265,6 @@ class _QuizScreenState extends State<QuizScreen> {
                                     });
                                   },
                                   style: OutlinedButton.styleFrom(
-                                    // FIX: Replaced deprecated withOpacity
                                     backgroundColor: isSelected
                                         ? Colors.amber.withAlpha(
                                             (0.2 * 255).round(),
@@ -316,8 +319,7 @@ class _QuizScreenState extends State<QuizScreen> {
                           onPressed: isLastQuestion
                               ? (_isSubmitting ||
                                         _timerNotStarted ||
-                                        _selectedAnswers.length !=
-                                            _questions.length
+                                        _selectedAnswers[index] == null
                                     ? null
                                     : () =>
                                           _submitAnswers(autoSubmitted: false))
