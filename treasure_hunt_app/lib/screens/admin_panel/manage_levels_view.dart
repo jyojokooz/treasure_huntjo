@@ -59,7 +59,63 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     super.dispose();
   }
 
-  // --- Functions (unchanged) ---
+  // --- NEW: Function to reset a specific level ---
+  Future<void> _resetLevelProgress(
+    String levelName,
+    String submissionField,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Confirm Reset for $levelName'),
+        content: Text(
+          'Are you sure you want to reset all team progress for $levelName? This will delete all scores and submissions for this level, allowing teams to play it again. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.blue),
+            child: const Text('Reset Level'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final firestore = FirebaseFirestore.instance;
+    final batch = firestore.batch();
+
+    // Find all teams that have a submission for this specific level
+    final teamsSnapshot = await firestore
+        .collection('teams')
+        .where(submissionField, isNotEqualTo: null)
+        .get();
+
+    for (final doc in teamsSnapshot.docs) {
+      batch.update(doc.reference, {submissionField: FieldValue.delete()});
+    }
+
+    // Also reset progress field for level 3
+    if (levelName == 'Level 3') {
+      for (final doc in teamsSnapshot.docs) {
+        batch.update(doc.reference, {'level3Progress': FieldValue.delete()});
+      }
+    }
+
+    await batch.commit();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$levelName progress has been reset for all teams!'),
+        backgroundColor: Colors.blue,
+      ),
+    );
+  }
+
   Future<void> _endGameAndAnnounceWinners() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -195,6 +251,7 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
               timerDocRef: _level1TimerDocRef,
               durationController: _level1DurationController,
               levelName: 'Level 1',
+              submissionField: 'level1Submission',
             ),
           ),
           const SizedBox(height: 20),
@@ -204,6 +261,7 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
               timerDocRef: _level2TimerDocRef,
               durationController: _level2DurationController,
               levelName: 'Level 2',
+              submissionField: 'level2Submission',
             ),
           ),
           const SizedBox(height: 20),
@@ -213,6 +271,7 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
               timerDocRef: _level3TimerDocRef,
               durationController: _level3DurationController,
               levelName: 'Level 3',
+              submissionField: 'level3Submission',
             ),
           ),
           const SizedBox(height: 20),
@@ -227,7 +286,6 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     );
   }
 
-  // --- WIDGET REWRITE: This widget now has a working ReorderableListView ---
   Widget _buildDepartmentManager() {
     return StreamBuilder<DocumentSnapshot>(
       stream: _level3SettingsDocRef.snapshots(),
@@ -299,23 +357,16 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
                 style: TextStyle(color: Colors.white54),
               )
             else
-              // --- THE FIX IS HERE ---
               ReorderableListView(
-                shrinkWrap: true, // Let the list size itself
-                primary: false, // Indicate it's a nested scrollable
+                shrinkWrap: true,
+                primary: false,
                 onReorder: (oldIndex, newIndex) {
-                  // This logic now correctly updates Firestore, which will then
-                  // trigger the StreamBuilder to rebuild the UI with the correct order.
                   if (newIndex > oldIndex) {
                     newIndex -= 1;
                   }
-                  // Make a mutable copy from the stream's data to reorder
                   List<String> newOrder = List.from(clueOrder);
                   final String item = newOrder.removeAt(oldIndex);
                   newOrder.insert(newIndex, item);
-
-                  // Update Firestore directly. NO setState is needed here.
-                  // The StreamBuilder will handle the UI update automatically.
                   _level3SettingsDocRef.set({
                     'clueOrder': newOrder,
                   }, SetOptions(merge: true));
@@ -344,7 +395,6 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     );
   }
 
-  // --- Other helper widgets (unchanged) ---
   Widget _buildGameControlButtons() {
     return Column(
       children: [
@@ -379,10 +429,12 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     );
   }
 
+  // --- WIDGET REWRITE: Added the reset button and submissionField parameter ---
   Widget _buildTimerControls({
     required DocumentReference timerDocRef,
     required TextEditingController durationController,
     required String levelName,
+    required String submissionField, // e.g., 'level1Submission'
   }) {
     return StreamBuilder<DocumentSnapshot>(
       stream: timerDocRef.snapshots(),
@@ -395,6 +447,7 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
         final endTime = (timerData['endTime'] as Timestamp?)?.toDate();
         final bool isTimerRunning =
             endTime != null && endTime.isAfter(DateTime.now());
+
         return Column(
           children: [
             TextField(
@@ -410,47 +463,75 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
               enabled: !isTimerRunning,
             ),
             const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.play_circle_outline),
+                    label: const Text('Start'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      disabledBackgroundColor: Colors.grey.shade800,
+                    ),
+                    onPressed: isTimerRunning
+                        ? null
+                        : () {
+                            final minutes = int.tryParse(
+                              durationController.text,
+                            );
+                            if (minutes != null && minutes > 0) {
+                              _startLevel(timerDocRef, minutes, levelName);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Please enter a valid duration.',
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.stop_circle_outlined),
+                    label: const Text('End Now'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      disabledBackgroundColor: Colors.grey.shade800,
+                    ),
+                    onPressed: isTimerRunning
+                        ? () => _stopLevel(timerDocRef, levelName)
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            // NEW: Reset Level Button
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                icon: Icon(
-                  isTimerRunning
-                      ? Icons.stop_circle_outlined
-                      : Icons.play_circle_outline,
-                ),
-                label: Text(
-                  isTimerRunning
-                      ? 'Stop & Lock $levelName'
-                      : 'Start $levelName',
-                ),
+                icon: const Icon(Icons.replay),
+                label: Text('Reset $levelName'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isTimerRunning
-                      ? Colors.redAccent
-                      : Colors.green,
+                  backgroundColor: Colors.blue.shade700,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                onPressed: () {
-                  if (isTimerRunning) {
-                    _stopLevel(timerDocRef, levelName);
-                  } else {
-                    final minutes = int.tryParse(durationController.text);
-                    if (minutes != null && minutes > 0) {
-                      _startLevel(timerDocRef, minutes, levelName);
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Please enter a valid duration.'),
-                        ),
-                      );
-                    }
-                  }
-                },
+                onPressed: () =>
+                    _resetLevelProgress(levelName, submissionField),
               ),
             ),
             if (isTimerRunning)
               Padding(
-                padding: const EdgeInsets.only(top: 8.0),
+                padding: const EdgeInsets.only(top: 12.0),
                 child: Text(
                   '$levelName is LIVE. Ends at ${DateFormat.jm().format(endTime)}',
                   style: const TextStyle(
