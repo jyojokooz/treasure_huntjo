@@ -27,10 +27,8 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
       .collection('game_content')
       .doc('level2')
       .collection('puzzles');
-  // NEW: Instantiate the upload service.
   final ImageUploadService _uploadService = ImageUploadService();
 
-  // REWRITE: The dialog is now fully stateful and includes media handling.
   void _showPuzzleDialog({Puzzle? existingPuzzle}) {
     final formKey = GlobalKey<FormState>();
 
@@ -61,9 +59,10 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
       if (correctOptionIndex == -1) correctOptionIndex = null;
     }
 
-    // NEW: State for image handling
-    XFile? pickedImage;
+    // Media state handling
+    XFile? pickedMedia;
     String? mediaUrl = existingPuzzle?.mediaUrl;
+    MediaType? mediaType = existingPuzzle?.mediaType;
     bool isUploading = false;
 
     showDialog(
@@ -72,16 +71,18 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            // NEW: Function to pick an image from the gallery.
-            Future<void> pickImage() async {
+            // Generic media picker functions
+            Future<void> pickMedia(bool isVideo) async {
               final ImagePicker picker = ImagePicker();
-              final XFile? image = await picker.pickImage(
-                source: ImageSource.gallery,
-              );
-              if (image != null) {
+              final XFile? file = isVideo
+                  ? await picker.pickVideo(source: ImageSource.gallery)
+                  : await picker.pickImage(source: ImageSource.gallery);
+
+              if (file != null) {
                 setDialogState(() {
-                  pickedImage = image;
-                  mediaUrl = null; // Clear existing URL if new image is picked
+                  pickedMedia = file;
+                  mediaUrl = null;
+                  mediaType = isVideo ? MediaType.video : MediaType.image;
                 });
               }
             }
@@ -96,29 +97,54 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // NEW: Image preview and controls
-                      if (pickedImage != null)
-                        Image.file(File(pickedImage!.path), height: 100)
+                      // Media preview and controls
+                      if (pickedMedia != null)
+                        mediaType == MediaType.image
+                            ? Image.file(File(pickedMedia!.path), height: 100)
+                            : const Icon(
+                                Icons.videocam,
+                                size: 60,
+                                color: Colors.grey,
+                              )
                       else if (mediaUrl != null)
-                        Image.network(mediaUrl!, height: 100),
+                        mediaType == MediaType.image
+                            ? Image.network(mediaUrl!, height: 100)
+                            : const Icon(
+                                Icons.videocam,
+                                size: 60,
+                                color: Colors.grey,
+                              ),
+
+                      if (pickedMedia != null)
+                        Text(
+                          pickedMedia!.name,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           TextButton.icon(
                             icon: const Icon(Icons.image),
-                            label: Text(
-                              mediaUrl == null && pickedImage == null
-                                  ? 'Add Image'
-                                  : 'Change Image',
-                            ),
-                            onPressed: pickImage,
+                            label: const Text('Image'),
+                            onPressed: () => pickMedia(false),
                           ),
-                          if (mediaUrl != null || pickedImage != null)
+                          TextButton.icon(
+                            icon: const Icon(Icons.videocam),
+                            label: const Text('Video'),
+                            onPressed: () => pickMedia(true),
+                          ),
+                          if (mediaUrl != null || pickedMedia != null)
                             IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
                               onPressed: () => setDialogState(() {
-                                pickedImage = null;
+                                pickedMedia = null;
                                 mediaUrl = null;
+                                mediaType = null;
                               }),
                             ),
                         ],
@@ -188,14 +214,12 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
                               );
                               return;
                             }
-
                             setDialogState(() => isUploading = true);
 
                             String? finalMediaUrl = mediaUrl;
-                            // NEW: Upload the image if a new one was picked.
-                            if (pickedImage != null) {
+                            if (pickedMedia != null) {
                               finalMediaUrl = await _uploadService.uploadImage(
-                                pickedImage!,
+                                pickedMedia!,
                               );
                             }
 
@@ -212,9 +236,11 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
                                         .map((c) => c.text.trim())
                                         .toList()
                                   : null,
-                              mediaUrl: finalMediaUrl, // Pass the final URL
+                              mediaUrl: finalMediaUrl,
+                              mediaType: finalMediaUrl != null
+                                  ? mediaType
+                                  : null,
                             );
-
                             await _puzzlesCollection
                                 .doc(newPuzzle.id)
                                 .set(newPuzzle.toMap());
@@ -237,7 +263,6 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
     );
   }
 
-  // Helper widgets remain the same
   Widget _buildTextInputFields(
     PuzzleType type,
     TextEditingController promptController,
@@ -293,9 +318,8 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
           validator: (val) => val!.isEmpty ? 'Enter question text' : null,
         ),
         const SizedBox(height: 16),
-        ...List.generate(
-          4,
-          (index) => Row(
+        ...List.generate(4, (index) {
+          return Row(
             children: [
               Expanded(
                 child: TextFormField(
@@ -310,8 +334,8 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
                 onChanged: onRadioChanged,
               ),
             ],
-          ),
-        ),
+          );
+        }),
       ],
     );
   }
@@ -329,13 +353,15 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.leaderboard_outlined),
                   label: const Text('View Level 2 Leaderboard'),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          const Level2LeaderboardView(isAdminView: true),
-                    ),
-                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            const Level2LeaderboardView(isAdminView: true),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -365,6 +391,31 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
                     itemCount: puzzles.length,
                     itemBuilder: (context, index) {
                       final puzzle = puzzles[index];
+                      IconData leadingIcon;
+                      Color leadingColor = Colors.black87;
+
+                      if (puzzle.mediaType == MediaType.video) {
+                        leadingIcon = Icons.videocam_outlined;
+                        leadingColor = Colors.blueAccent;
+                      } else if (puzzle.mediaType == MediaType.image) {
+                        leadingIcon = Icons.image_outlined;
+                        leadingColor = Colors.blueAccent;
+                      } else {
+                        switch (puzzle.type) {
+                          case PuzzleType.quiz:
+                            leadingIcon = Icons.quiz_outlined;
+                            break;
+                          case PuzzleType.scramble:
+                            leadingIcon = Icons.shuffle;
+                            break;
+                          case PuzzleType.math:
+                            leadingIcon = Icons.calculate_outlined;
+                            break;
+                          default:
+                            leadingIcon = Icons.lightbulb_outline;
+                        }
+                      }
+
                       return Card(
                         color: Colors.white.withOpacity(0.9),
                         margin: const EdgeInsets.symmetric(
@@ -372,22 +423,7 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
                           vertical: 5,
                         ),
                         child: ListTile(
-                          // UPDATED: Show an icon if an image is attached.
-                          leading: puzzle.mediaUrl != null
-                              ? const Icon(
-                                  Icons.image_outlined,
-                                  color: Colors.blueAccent,
-                                )
-                              : Icon(
-                                  puzzle.type == PuzzleType.quiz
-                                      ? Icons.quiz_outlined
-                                      : puzzle.type == PuzzleType.scramble
-                                      ? Icons.shuffle
-                                      : puzzle.type == PuzzleType.math
-                                      ? Icons.calculate_outlined
-                                      : Icons.lightbulb_outline,
-                                  color: Colors.black87,
-                                ),
+                          leading: Icon(leadingIcon, color: leadingColor),
                           title: Text(
                             puzzle.prompt,
                             style: const TextStyle(

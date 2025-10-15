@@ -3,7 +3,10 @@
 // FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\models\puzzle_model.dart
 // ===============================
 
+// NEW: Enums for type-safety.
 enum PuzzleType { scramble, riddle, math, quiz }
+
+enum MediaType { image, video }
 
 class Puzzle {
   final String id;
@@ -11,7 +14,8 @@ class Puzzle {
   final String prompt;
   final String correctAnswer;
   final List<String>? options;
-  final String? mediaUrl; // NEW: Optional field for an image URL.
+  final String? mediaUrl;
+  final MediaType? mediaType; // NEW: To know if the URL is an image or video.
 
   Puzzle({
     required this.id,
@@ -19,7 +23,8 @@ class Puzzle {
     required this.prompt,
     required this.correctAnswer,
     this.options,
-    this.mediaUrl, // NEW: Add to constructor.
+    this.mediaUrl,
+    this.mediaType, // NEW: Add to constructor.
   });
 
   Map<String, dynamic> toMap() {
@@ -29,7 +34,8 @@ class Puzzle {
       'prompt': prompt,
       'correctAnswer': correctAnswer,
       'options': options,
-      'mediaUrl': mediaUrl, // NEW: Add to map.
+      'mediaUrl': mediaUrl,
+      'mediaType': mediaType?.name, // NEW: Store enum as a string.
     };
   }
 
@@ -41,6 +47,15 @@ class Puzzle {
       );
     }
 
+    // NEW: Helper to convert string back to MediaType enum.
+    MediaType? mediaTypeFromString(String? typeName) {
+      if (typeName == null) return null;
+      return MediaType.values.firstWhere(
+        (e) => e.name == typeName,
+        orElse: () => MediaType.image,
+      );
+    }
+
     return Puzzle(
       id: map['id'] ?? '',
       type: typeFromString(map['type']),
@@ -49,7 +64,8 @@ class Puzzle {
       options: map['options'] != null
           ? List<String>.from(map['options'])
           : null,
-      mediaUrl: map['mediaUrl'] as String?, // NEW: Read from map.
+      mediaUrl: map['mediaUrl'] as String?,
+      mediaType: mediaTypeFromString(map['mediaType']), // NEW: Read from map.
     );
   }
 }

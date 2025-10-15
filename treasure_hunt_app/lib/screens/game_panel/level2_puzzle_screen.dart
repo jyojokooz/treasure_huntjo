@@ -3,12 +3,15 @@
 // FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\game_panel\level2_puzzle_screen.dart
 // ===============================
 
+// ignore_for_file: deprecated_member_use
+
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:treasure_hunt_app/models/puzzle_model.dart';
 import 'package:treasure_hunt_app/services/auth_service.dart';
+import 'package:video_player/video_player.dart';
 
 class Level2PuzzleScreen extends StatefulWidget {
   const Level2PuzzleScreen({super.key});
@@ -197,35 +200,37 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     }
   }
 
-  // REWRITE: This now includes the media display logic.
   Widget _buildPuzzleUI(Puzzle puzzle) {
     return Column(
       children: [
-        // NEW: Conditionally display the image if the URL exists.
         if (puzzle.mediaUrl != null && puzzle.mediaUrl!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 24.0),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                puzzle.mediaUrl!,
-                height: 180,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, progress) {
-                  return progress == null
-                      ? child
-                      : const Center(child: CircularProgressIndicator());
-                },
-                errorBuilder: (context, error, stackTrace) => const Icon(
-                  Icons.broken_image,
-                  size: 50,
-                  color: Colors.grey,
-                ),
-              ),
+              child: puzzle.mediaType == MediaType.video
+                  ? _VideoPlayerWidget(
+                      key: ValueKey(puzzle.id),
+                      url: puzzle.mediaUrl!,
+                    )
+                  : Image.network(
+                      puzzle.mediaUrl!,
+                      height: 180,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, progress) =>
+                          progress == null
+                          ? child
+                          : const Center(child: CircularProgressIndicator()),
+                      errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.broken_image,
+                        size: 50,
+                        color: Colors.grey,
+                      ),
+                    ),
             ),
           ),
-        // The rest of the UI is built based on the puzzle type
+
         Builder(
           builder: (context) {
             switch (puzzle.type) {
@@ -330,7 +335,6 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            // ignore: deprecated_member_use
             color: Colors.black.withOpacity(0.3),
             borderRadius: BorderRadius.circular(12),
           ),
@@ -475,6 +479,127 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
                         ),
                       ),
               ),
+      ),
+    );
+  }
+}
+
+// --- WIDGET REWRITE: A much more robust and diagnostic-friendly video player ---
+class _VideoPlayerWidget extends StatefulWidget {
+  final String url;
+  const _VideoPlayerWidget({super.key, required this.url});
+
+  @override
+  State<_VideoPlayerWidget> createState() => _VideoPlayerWidgetState();
+}
+
+class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
+  late VideoPlayerController _controller;
+  bool _isPlaying = true;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // --- DIAGNOSTIC STEP ---
+    // This will print the exact URL to your debug console.
+    debugPrint("--- VIDEO PLAYER ATTEMPTING TO LOAD ---");
+    debugPrint("URL: ${widget.url}");
+    // --- END DIAGNOSTIC STEP ---
+
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
+      ..initialize()
+          .then((_) {
+            // This block executes once the video is successfully loaded.
+            if (mounted) {
+              setState(() {
+                _controller.setLooping(true);
+                _controller.play();
+                _isPlaying = true;
+                _hasError = false;
+              });
+            }
+          })
+          .catchError((error, stackTrace) {
+            // This block executes if the video fails to load.
+            debugPrint("--- VIDEO PLAYER FAILED TO LOAD ---");
+            debugPrint("Error: $error");
+            debugPrint("URL was: ${widget.url}");
+            if (mounted) {
+              setState(() {
+                _hasError = true;
+              });
+            }
+          });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _togglePlayPause() {
+    setState(() {
+      if (_controller.value.isPlaying) {
+        _controller.pause();
+        _isPlaying = false;
+      } else {
+        _controller.play();
+        _isPlaying = true;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasError) {
+      return const SizedBox(
+        height: 180,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+              SizedBox(height: 8),
+              Text(
+                "Could not load video",
+                style: TextStyle(color: Colors.white70),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (!_controller.value.isInitialized) {
+      return const SizedBox(
+        height: 180,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return AspectRatio(
+      aspectRatio: _controller.value.aspectRatio,
+      child: GestureDetector(
+        onTap: _togglePlayPause,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            VideoPlayer(_controller),
+            // Show a play/pause icon overlay.
+            AnimatedOpacity(
+              opacity: _isPlaying ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 300),
+              child: Icon(
+                Icons.play_arrow,
+                color: Colors.white.withOpacity(0.8),
+                size: 64,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
