@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:treasure_hunt_app/models/quiz_model.dart';
 import 'package:treasure_hunt_app/services/auth_service.dart';
-import 'package:treasure_hunt_app/services/music_service.dart'; // NEW: Import MusicService
+import 'package:treasure_hunt_app/services/music_service.dart';
 
 class QuizScreen extends StatefulWidget {
   const QuizScreen({super.key});
@@ -21,12 +21,9 @@ class QuizScreen extends StatefulWidget {
 
 class _QuizScreenState extends State<QuizScreen> {
   final PageController _pageController = PageController();
-  final Map<int, int> _selectedAnswers = {};
+  final AuthService _auth = AuthService();
 
-  final _timerDocRef = FirebaseFirestore.instance
-      .collection('game_settings')
-      .doc('level1_timer');
-
+  Map<int, int> _selectedAnswers = {};
   StreamSubscription? _timerSubscription;
   Timer? _countdownTimer;
   Duration _timeLeft = Duration.zero;
@@ -38,14 +35,12 @@ class _QuizScreenState extends State<QuizScreen> {
   @override
   void initState() {
     super.initState();
-    // THE FIX: Pause music when entering the level.
     MusicService.instance.pauseBackgroundMusic();
-    _fetchQuestionsAndSetupTimer();
+    _initializeLevel();
   }
 
   @override
   void dispose() {
-    // THE FIX: Resume music when leaving the level.
     MusicService.instance.resumeBackgroundMusic();
     _timerSubscription?.cancel();
     _countdownTimer?.cancel();
@@ -53,14 +48,94 @@ class _QuizScreenState extends State<QuizScreen> {
     super.dispose();
   }
 
-  Future<void> _fetchQuestionsAndSetupTimer() async {
-    final questionsSnapshot = await FirebaseFirestore.instance
-        .collection('quizzes')
-        .doc('level1')
-        .collection('questions')
-        .get();
+  Future<void> _initializeLevel() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
 
-    _timerSubscription = _timerDocRef.snapshots().listen((timerSnap) {
+    final teamRef = FirebaseFirestore.instance
+        .collection('teams')
+        .doc(user.uid);
+    final teamDoc = await teamRef.get();
+    final progress = teamDoc.data()?['level1Progress'] as Map<String, dynamic>?;
+
+    List<QuizQuestion> allQuestions = [];
+    final questionsSnapshot = await FirebaseFirestore.instance
+        .collection('quizzes/level1/questions')
+        .get();
+    allQuestions = questionsSnapshot.docs
+        .map((doc) => QuizQuestion.fromMap(doc.data()))
+        .toList();
+
+    if (progress != null) {
+      final questionOrder = List<String>.from(progress['questionOrder'] ?? []);
+      _questions = questionOrder
+          .map(
+            (id) => allQuestions.firstWhere(
+              (q) => q.id == id,
+              orElse: () => allQuestions.first,
+            ),
+          )
+          .toList();
+      _selectedAnswers =
+          (progress['answers'] as Map<String, dynamic>?)?.map(
+            (k, v) => MapEntry(int.parse(k), v as int),
+          ) ??
+          {};
+
+      final initialPage = _selectedAnswers.keys.length;
+      if (initialPage > 0 && initialPage < _questions.length) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_pageController.hasClients) {
+            _pageController.jumpToPage(initialPage);
+          }
+        });
+      }
+    } else {
+      allQuestions.shuffle();
+      _questions = allQuestions;
+
+      final questionOrder = _questions.map((q) => q.id).toList();
+      await teamRef.set({
+        'level1Progress': {'questionOrder': questionOrder, 'answers': {}},
+      }, SetOptions(merge: true));
+    }
+
+    if (mounted) setState(() => _isLoading = false);
+    _setupTimer();
+  }
+
+  Future<void> _saveAnswer(int questionIndex, int answerIndex) async {
+    setState(() {
+      _selectedAnswers[questionIndex] = answerIndex;
+    });
+
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    await FirebaseFirestore.instance.collection('teams').doc(user.uid).set({
+      'level1Progress': {
+        'answers': _selectedAnswers.map((k, v) => MapEntry(k.toString(), v)),
+      },
+    }, SetOptions(merge: true));
+
+    if (questionIndex < _questions.length - 1) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeIn,
+      );
+    }
+  }
+
+  Future<void> _setupTimer() async {
+    // --- THE FIX IS HERE ---
+    // Renamed the variable to remove the leading underscore.
+    final timerDocRef = FirebaseFirestore.instance
+        .collection('game_settings')
+        .doc('level1_timer');
+    _timerSubscription = timerDocRef.snapshots().listen((timerSnap) {
       if (!mounted) return;
       final data = timerSnap.data();
       final endTime = (data?['endTime'] as Timestamp?)?.toDate();
@@ -90,15 +165,6 @@ class _QuizScreenState extends State<QuizScreen> {
         });
       }
     });
-
-    if (mounted) {
-      setState(() {
-        _questions = questionsSnapshot.docs
-            .map((doc) => QuizQuestion.fromMap(doc.data()))
-            .toList();
-        _isLoading = false;
-      });
-    }
   }
 
   Future<void> _submitAnswers({bool autoSubmitted = false}) async {
@@ -121,10 +187,13 @@ class _QuizScreenState extends State<QuizScreen> {
       'answers': _selectedAnswers.map((k, v) => MapEntry(k.toString(), v)),
     };
 
-    final user = AuthService().currentUser;
+    final user = _auth.currentUser;
     if (user != null) {
       await FirebaseFirestore.instance.collection('teams').doc(user.uid).update(
-        {'level1Submission': submissionData},
+        {
+          'level1Submission': submissionData,
+          'level1Progress': FieldValue.delete(),
+        },
       );
     }
 
@@ -228,13 +297,12 @@ class _QuizScreenState extends State<QuizScreen> {
                                 height: 180,
                                 width: double.infinity,
                                 fit: BoxFit.cover,
-                                loadingBuilder: (context, child, progress) {
-                                  return progress == null
-                                      ? child
-                                      : const Center(
-                                          child: CircularProgressIndicator(),
-                                        );
-                                },
+                                loadingBuilder: (context, child, progress) =>
+                                    progress == null
+                                    ? child
+                                    : const Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
                               ),
                             ),
                           ),
@@ -259,11 +327,8 @@ class _QuizScreenState extends State<QuizScreen> {
                                   vertical: 6.0,
                                 ),
                                 child: OutlinedButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _selectedAnswers[index] = optionIndex;
-                                    });
-                                  },
+                                  onPressed: () =>
+                                      _saveAnswer(index, optionIndex),
                                   style: OutlinedButton.styleFrom(
                                     backgroundColor: isSelected
                                         ? Colors.amber.withAlpha(
@@ -303,50 +368,39 @@ class _QuizScreenState extends State<QuizScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isLastQuestion
-                                ? Colors.amber
-                                : Colors.grey.shade800,
-                            foregroundColor: isLastQuestion
-                                ? Colors.black
-                                : Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 18),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
+                        if (isLastQuestion)
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.amber,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(vertical: 18),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              disabledBackgroundColor: Colors.grey.shade800,
                             ),
+                            onPressed:
+                                _isSubmitting ||
+                                    _timerNotStarted ||
+                                    _selectedAnswers.length != _questions.length
+                                ? null
+                                : () => _submitAnswers(autoSubmitted: false),
+                            child: _isSubmitting
+                                ? const SizedBox(
+                                    height: 24,
+                                    width: 24,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.black,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Submit Final Answers',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                           ),
-                          onPressed: isLastQuestion
-                              ? (_isSubmitting ||
-                                        _timerNotStarted ||
-                                        _selectedAnswers[index] == null
-                                    ? null
-                                    : () =>
-                                          _submitAnswers(autoSubmitted: false))
-                              : () {
-                                  _pageController.nextPage(
-                                    duration: const Duration(milliseconds: 300),
-                                    curve: Curves.easeIn,
-                                  );
-                                },
-                          child: _isSubmitting && isLastQuestion
-                              ? const SizedBox(
-                                  height: 24,
-                                  width: 24,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.black,
-                                  ),
-                                )
-                              : Text(
-                                  isLastQuestion
-                                      ? 'Submit Final Answers'
-                                      : 'Next Question',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                        ),
                       ],
                     ),
                   );

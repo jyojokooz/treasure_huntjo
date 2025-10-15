@@ -35,8 +35,6 @@ class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
     _fetchTimerStartTime();
   }
 
-  // --- Data Fetching and Reset Logic ---
-
   Future<void> _fetchTimerStartTime() async {
     try {
       final timerDoc = await FirebaseFirestore.instance
@@ -130,8 +128,6 @@ class _Level2LeaderboardViewState extends State<Level2LeaderboardView> {
       );
     }
   }
-
-  // --- UI Helper Widgets ---
 
   String _formatDuration(Duration duration) {
     if (duration <= Duration.zero) return '--:--';
@@ -368,7 +364,7 @@ class _Level2TeamDetailsScreenState extends State<_Level2TeamDetailsScreen> {
                   padding: const EdgeInsets.all(16.0),
                   child: Row(
                     children: [
-                      const CircleAvatar(
+                      CircleAvatar(
                         backgroundColor: Colors.amber,
                         child: Icon(Icons.emoji_events, color: Colors.black),
                       ),
@@ -470,25 +466,31 @@ class _Level2TeamDetailsScreenState extends State<_Level2TeamDetailsScreen> {
                   }
 
                   final allPuzzles = snapshot.data!;
-                  allPuzzles.sort(
-                    // FIX: Changed scrambledWord to prompt for sorting
-                    (a, b) => a.prompt.compareTo(b.prompt),
-                  );
+                  // Create a map for quick lookup
+                  final puzzleMap = {for (var p in allPuzzles) p.id: p};
+                  // Order the answers based on the user's submission map keys
+                  final orderedUserAnswers = userAnswers.keys.toList();
 
                   return Column(
-                    children: List.generate(allPuzzles.length, (index) {
-                      final puzzle = allPuzzles[index];
+                    children: List.generate(orderedUserAnswers.length, (index) {
+                      final puzzleId = orderedUserAnswers[index];
+                      final puzzle = puzzleMap[puzzleId];
+                      if (puzzle == null) return const SizedBox.shrink();
+
                       final userAnswer =
-                          userAnswers[puzzle.id] ?? "Not Answered";
-                      final isCorrect = userAnswer == puzzle.correctAnswer;
+                          userAnswers[puzzleId] ?? "Not Answered";
+                      // --- THE FIX IS HERE ---
+                      // Perform a case-insensitive comparison.
+                      final isCorrect =
+                          userAnswer.toUpperCase() ==
+                          puzzle.correctAnswer.toUpperCase();
 
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // FIX: Changed scrambledWord to prompt for display
-                            Text('${index + 1}. Unscramble: ${puzzle.prompt}'),
+                            Text('${index + 1}. ${puzzle.prompt}'),
                             const SizedBox(height: 4),
                             Row(
                               children: [

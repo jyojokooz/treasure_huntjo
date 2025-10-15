@@ -37,8 +37,7 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
   int _currentIndex = 0;
   int _score = 0;
   int? _selectedQuizOption;
-
-  final Map<String, String> _submittedAnswers = {};
+  Map<String, String> _submittedAnswers = {};
 
   @override
   void initState() {
@@ -57,26 +56,54 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
   }
 
   Future<void> _initializeLevel() async {
-    await _fetchPuzzles();
-    _setupTimer();
-  }
-
-  Future<void> _fetchPuzzles() async {
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('game_content/level2/puzzles')
-          .get();
-      if (mounted) {
-        setState(() {
-          _puzzles = snapshot.docs
-              .map((doc) => Puzzle.fromMap(doc.data()))
-              .toList();
-          _puzzles.shuffle();
-        });
-      }
-    } catch (e) {
-      debugPrint("Error fetching puzzles: $e");
+    final user = _authService.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
     }
+
+    final teamRef = FirebaseFirestore.instance
+        .collection('teams')
+        .doc(user.uid);
+    final teamDoc = await teamRef.get();
+    final progress = teamDoc.data()?['level2Progress'] as Map<String, dynamic>?;
+
+    List<Puzzle> allPuzzles = [];
+    final snapshot = await FirebaseFirestore.instance
+        .collection('game_content/level2/puzzles')
+        .get();
+    allPuzzles = snapshot.docs
+        .map((doc) => Puzzle.fromMap(doc.data()))
+        .toList();
+
+    if (progress != null) {
+      final puzzleOrder = List<String>.from(progress['puzzleOrder'] ?? []);
+      _puzzles = puzzleOrder
+          .map(
+            (id) => allPuzzles.firstWhere(
+              (p) => p.id == id,
+              orElse: () => allPuzzles.first,
+            ),
+          )
+          .toList();
+      _submittedAnswers = Map<String, String>.from(progress['answers'] ?? {});
+      _score = progress['score'] ?? 0;
+      _currentIndex = _submittedAnswers.length;
+    } else {
+      allPuzzles.shuffle();
+      _puzzles = allPuzzles;
+      final puzzleOrder = _puzzles.map((p) => p.id).toList();
+      await teamRef.set({
+        'level2Progress': {
+          'puzzleOrder': puzzleOrder,
+          'answers': {},
+          'score': 0,
+        },
+      }, SetOptions(merge: true));
+    }
+
+    if (mounted) setState(() => _isLoading = false);
+    _setupTimer();
   }
 
   void _setupTimer() {
@@ -129,8 +156,9 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
         ? "SKIPPED"
         : submittedAnswer;
 
+    int currentScore = _score;
     if (submittedAnswer == correctAnswer) {
-      _score++;
+      currentScore++;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Correct!'),
@@ -148,12 +176,22 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
       );
     }
 
-    _moveToNext();
+    _saveProgressAndMoveNext(currentScore);
   }
 
-  void _moveToNext() {
+  Future<void> _saveProgressAndMoveNext(int newScore) async {
+    final user = _authService.currentUser;
+    if (user == null) return;
+
+    await FirebaseFirestore.instance.collection('teams').doc(user.uid).set({
+      'level2Progress': {'answers': _submittedAnswers, 'score': newScore},
+    }, SetOptions(merge: true));
+
     _textController.clear();
-    setState(() => _selectedQuizOption = null);
+    setState(() {
+      _score = newScore;
+      _selectedQuizOption = null;
+    });
 
     if (_currentIndex < _puzzles.length - 1) {
       setState(() => _currentIndex++);
@@ -167,13 +205,7 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     setState(() => _isSubmitting = true);
     _countdownTimer?.cancel();
     _timerSubscription?.cancel();
-    if (autoSubmitted) {
-      for (final puzzle in _puzzles) {
-        if (!_submittedAnswers.containsKey(puzzle.id)) {
-          _submittedAnswers[puzzle.id] = "TIME UP";
-        }
-      }
-    }
+
     final submissionData = {
       'score': _score,
       'totalQuestions': _puzzles.length,
@@ -183,7 +215,10 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     final user = _authService.currentUser;
     if (user != null) {
       await FirebaseFirestore.instance.collection('teams').doc(user.uid).update(
-        {'level2Submission': submissionData},
+        {
+          'level2Submission': submissionData,
+          'level2Progress': FieldValue.delete(),
+        },
       );
     }
     if (mounted) {
@@ -334,7 +369,6 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
         ),
         const SizedBox(height: 20),
         Container(
-          // FIX: Replaced deprecated withOpacity
           decoration: BoxDecoration(
             color: Colors.black.withAlpha((0.3 * 255).round()),
             borderRadius: BorderRadius.circular(12),
@@ -498,8 +532,6 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
   late VideoPlayerController _controller;
   late Future<void> _initializeVideoPlayerFuture;
   bool _isPlaying = true;
-  // FIX: This field is no longer used, so it has been removed.
-  // bool _hasError = false;
 
   @override
   void initState() {
@@ -523,7 +555,6 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
           debugPrint("--- VIDEO PLAYER FAILED TO LOAD ---");
           debugPrint("Error: $error");
           debugPrint("URL was: ${widget.url}");
-          // The FutureBuilder will catch this error, so we don't need a separate flag.
         });
   }
 
@@ -587,7 +618,6 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
                     duration: const Duration(milliseconds: 300),
                     child: Icon(
                       Icons.play_arrow,
-                      // FIX: Replaced deprecated withOpacity
                       color: Colors.white.withAlpha((0.8 * 255).round()),
                       size: 64,
                     ),

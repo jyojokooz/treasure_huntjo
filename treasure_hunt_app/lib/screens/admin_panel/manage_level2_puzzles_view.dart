@@ -32,7 +32,6 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
   void _showPuzzleDialog({Puzzle? existingPuzzle}) {
     final formKey = GlobalKey<FormState>();
 
-    // State for the dialog
     PuzzleType selectedType = existingPuzzle?.type ?? PuzzleType.riddle;
     final promptController = TextEditingController(
       text: existingPuzzle?.prompt ?? '',
@@ -43,6 +42,7 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
     final optionControllers = List.generate(
       4,
       (i) => TextEditingController(
+        // FIX: Use null-aware access `?.` to prevent error if existingPuzzle is null.
         text:
             existingPuzzle?.options != null &&
                 i < existingPuzzle!.options!.length
@@ -53,13 +53,16 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
     int? correctOptionIndex;
     if (existingPuzzle?.type == PuzzleType.quiz &&
         existingPuzzle?.options != null) {
-      correctOptionIndex = existingPuzzle!.options!.indexOf(
-        existingPuzzle.correctAnswer,
+      // FIX: Use null-aware access `?.` here as well.
+      final correctAnswerUpper = existingPuzzle?.correctAnswer.toUpperCase();
+      correctOptionIndex = existingPuzzle!.options!.indexWhere(
+        (opt) => opt.toUpperCase() == correctAnswerUpper,
       );
-      if (correctOptionIndex == -1) correctOptionIndex = null;
+      if (correctOptionIndex == -1) {
+        correctOptionIndex = null;
+      }
     }
 
-    // Media state handling
     XFile? pickedMedia;
     String? mediaUrl = existingPuzzle?.mediaUrl;
     MediaType? mediaType = existingPuzzle?.mediaType;
@@ -71,7 +74,6 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            // Generic media picker functions
             Future<void> pickMedia(bool isVideo) async {
               final ImagePicker picker = ImagePicker();
               final XFile? file = isVideo
@@ -97,7 +99,6 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Media preview and controls
                       if (pickedMedia != null)
                         mediaType == MediaType.image
                             ? Image.file(File(pickedMedia!.path), height: 100)
@@ -230,6 +231,7 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
                               correctAnswer: selectedType == PuzzleType.quiz
                                   ? optionControllers[correctOptionIndex!].text
                                         .trim()
+                                        .toUpperCase()
                                   : answerController.text.trim().toUpperCase(),
                               options: selectedType == PuzzleType.quiz
                                   ? optionControllers
@@ -286,7 +288,11 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
         TextFormField(
           controller: promptController,
           decoration: InputDecoration(labelText: promptLabel),
-          validator: (val) => val!.isEmpty ? 'Please enter the prompt' : null,
+          validator: (val) {
+            // FIX: Add curly braces for linter warning.
+            if (val!.isEmpty) return 'Please enter the prompt';
+            return null;
+          },
           textCapitalization: type == PuzzleType.scramble
               ? TextCapitalization.characters
               : TextCapitalization.sentences,
@@ -295,7 +301,11 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
         TextFormField(
           controller: answerController,
           decoration: const InputDecoration(labelText: 'Correct Answer'),
-          validator: (val) => val!.isEmpty ? 'Please enter the answer' : null,
+          validator: (val) {
+            // FIX: Add curly braces for linter warning.
+            if (val!.isEmpty) return 'Please enter the answer';
+            return null;
+          },
           textCapitalization: type == PuzzleType.scramble
               ? TextCapitalization.characters
               : TextCapitalization.sentences,
@@ -315,7 +325,11 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
         TextFormField(
           controller: questionController,
           decoration: const InputDecoration(labelText: 'Quiz Question'),
-          validator: (val) => val!.isEmpty ? 'Enter question text' : null,
+          validator: (val) {
+            // FIX: Add curly braces for linter warning.
+            if (val!.isEmpty) return 'Enter question text';
+            return null;
+          },
         ),
         const SizedBox(height: 16),
         ...List.generate(4, (index) {
@@ -325,7 +339,11 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
                 child: TextFormField(
                   controller: optionControllers[index],
                   decoration: InputDecoration(labelText: 'Option ${index + 1}'),
-                  validator: (val) => val!.isEmpty ? 'Enter option text' : null,
+                  validator: (val) {
+                    // FIX: Add curly braces for linter warning.
+                    if (val!.isEmpty) return 'Enter option text';
+                    return null;
+                  },
                 ),
               ),
               Radio<int>(
@@ -353,15 +371,13 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.leaderboard_outlined),
                   label: const Text('View Level 2 Leaderboard'),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const Level2LeaderboardView(isAdminView: true),
-                      ),
-                    );
-                  },
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          const Level2LeaderboardView(isAdminView: true),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -393,7 +409,6 @@ class _ManageLevel2PuzzlesViewState extends State<ManageLevel2PuzzlesView> {
                       final puzzle = puzzles[index];
                       IconData leadingIcon;
                       Color leadingColor = Colors.black87;
-
                       if (puzzle.mediaType == MediaType.video) {
                         leadingIcon = Icons.videocam_outlined;
                         leadingColor = Colors.blueAccent;
