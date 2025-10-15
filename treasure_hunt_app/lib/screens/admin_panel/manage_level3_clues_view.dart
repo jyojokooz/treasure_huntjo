@@ -75,20 +75,23 @@ class _ManageLevel3CluesViewState extends State<ManageLevel3CluesView> {
                     onChanged: (val) => answer = val,
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
-                    initialValue: qrCodeValue,
-                    decoration: const InputDecoration(
-                      labelText: 'QR Code Value',
+                  if (clueId != 'starting_point')
+                    TextFormField(
+                      initialValue: qrCodeValue,
+                      decoration: const InputDecoration(
+                        labelText: 'QR Code Value',
+                      ),
+                      validator: (val) =>
+                          val!.isEmpty ? 'Enter a unique QR value' : null,
+                      onChanged: (val) => qrCodeValue = val,
                     ),
-                    validator: (val) =>
-                        val!.isEmpty ? 'Enter a unique QR value' : null,
-                    onChanged: (val) => qrCodeValue = val,
-                  ),
                   const SizedBox(height: 16),
                   TextFormField(
                     initialValue: nextClueHint,
-                    decoration: const InputDecoration(
-                      labelText: 'Hint for Next Location',
+                    decoration: InputDecoration(
+                      labelText: clueId == 'starting_point'
+                          ? 'Hint for First Location'
+                          : 'Hint for Next Location',
                     ),
                     validator: (val) => val!.isEmpty ? 'Enter a hint' : null,
                     onChanged: (val) => nextClueHint = val,
@@ -126,6 +129,50 @@ class _ManageLevel3CluesViewState extends State<ManageLevel3CluesView> {
     );
   }
 
+  Widget _buildStartingPointCard(
+    Level3Clue? startingClue,
+    List<String> clueOrder,
+  ) {
+    String subtitle;
+    if (startingClue == null || startingClue.question.isEmpty) {
+      subtitle = 'No question set yet.';
+    } else if (startingClue.nextClueLocationHint.isEmpty) {
+      subtitle = 'WARNING: No hint for the first location is set!';
+    } else {
+      final firstDeptId = clueOrder.isNotEmpty ? clueOrder.first : null;
+      final firstDeptName = firstDeptId != null
+          ? _allDepartments[firstDeptId]
+          : '...';
+      subtitle = 'Hint points to: $firstDeptName';
+    }
+
+    return Card(
+      color: Colors.amber.withOpacity(0.2),
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: ListTile(
+        leading: const Icon(Icons.flag_circle_outlined, color: Colors.amber),
+        title: const Text(
+          'Starting Point',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(
+            color: startingClue?.nextClueLocationHint.isEmpty ?? true
+                ? Colors.redAccent
+                : Colors.white70,
+          ),
+        ),
+        trailing: const Icon(Icons.edit_outlined, color: Colors.white70),
+        onTap: () => _showClueDialog(
+          existingClue: startingClue,
+          clueId: 'starting_point',
+          deptName: 'Starting Point',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -156,10 +203,8 @@ class _ManageLevel3CluesViewState extends State<ManageLevel3CluesView> {
                 .doc('level3_settings')
                 .snapshots(),
             builder: (context, settingsSnapshot) {
-              // --- THE FIX IS HERE ---
-              // We create a default empty list.
               List<String> activeDepartments = [];
-              // We only try to read the data IF the document actually exists.
+              List<String> clueOrder = [];
               if (settingsSnapshot.hasData && settingsSnapshot.data!.exists) {
                 final data =
                     settingsSnapshot.data!.data() as Map<String, dynamic>? ??
@@ -167,8 +212,8 @@ class _ManageLevel3CluesViewState extends State<ManageLevel3CluesView> {
                 activeDepartments = List<String>.from(
                   data['activeDepartments'] ?? [],
                 );
+                clueOrder = List<String>.from(data['clueOrder'] ?? []);
               }
-              // If the document doesn't exist, `activeDepartments` remains an empty list, preventing the crash.
 
               return StreamBuilder<QuerySnapshot>(
                 stream: _cluesCollection.snapshots(),
@@ -188,56 +233,66 @@ class _ManageLevel3CluesViewState extends State<ManageLevel3CluesView> {
                         }
                       : <String, Level3Clue>{};
 
+                  final startingClue = clues['starting_point'];
+
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(8, 0, 8, 90),
-                    children: _allDepartments.entries.map((entry) {
-                      final clueId = entry.key;
-                      final deptName = entry.value;
-                      final clue = clues[clueId];
-                      final bool isActive = activeDepartments.contains(clueId);
+                    children: [
+                      _buildStartingPointCard(startingClue, clueOrder),
+                      const Divider(color: Colors.white24),
+                      // --- THE FIX IS HERE ---
+                      // Removed the unnecessary .toList() call.
+                      ..._allDepartments.entries.map((entry) {
+                        final clueId = entry.key;
+                        final deptName = entry.value;
+                        final clue = clues[clueId];
+                        final bool isActive = activeDepartments.contains(
+                          clueId,
+                        );
 
-                      return Card(
-                        color: isActive
-                            ? Colors.white.withOpacity(0.1)
-                            : Colors.black.withOpacity(0.2),
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        child: ListTile(
-                          title: Text(
-                            deptName,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: isActive ? Colors.white : Colors.grey,
-                            ),
+                        return Card(
+                          color: isActive
+                              ? Colors.white.withOpacity(0.1)
+                              : Colors.black.withOpacity(0.2),
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
                           ),
-                          subtitle: Text(
-                            isActive
-                                ? (clue?.question ?? 'No question set yet.')
-                                : '(Inactive)',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
+                          child: ListTile(
+                            title: Text(
+                              deptName,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: isActive ? Colors.white : Colors.grey,
+                              ),
+                            ),
+                            subtitle: Text(
+                              isActive
+                                  ? (clue?.question ?? 'No question set yet.')
+                                  : '(Inactive)',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: isActive
+                                    ? Colors.white.withOpacity(0.7)
+                                    : Colors.grey.shade600,
+                              ),
+                            ),
+                            trailing: Icon(
+                              Icons.edit_outlined,
                               color: isActive
-                                  ? Colors.white.withOpacity(0.7)
-                                  : Colors.grey.shade600,
+                                  ? Colors.white70
+                                  : Colors.grey.shade700,
+                            ),
+                            onTap: () => _showClueDialog(
+                              existingClue: clue,
+                              clueId: clueId,
+                              deptName: deptName,
                             ),
                           ),
-                          trailing: Icon(
-                            Icons.edit_outlined,
-                            color: isActive
-                                ? Colors.white70
-                                : Colors.grey.shade700,
-                          ),
-                          onTap: () => _showClueDialog(
-                            existingClue: clue,
-                            clueId: clueId,
-                            deptName: deptName,
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                        );
+                      }),
+                    ],
                   );
                 },
               );

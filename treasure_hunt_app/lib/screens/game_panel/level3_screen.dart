@@ -26,6 +26,9 @@ class _Level3ScreenState extends State<Level3Screen> {
       .doc('level3_timer');
   final _authService = AuthService();
 
+  // --- THE FIX: Define the controller here so it persists across rebuilds ---
+  late final TextEditingController _initialAnswerController;
+
   StreamSubscription? _timerSubscription;
   Timer? _countdownTimer;
   Duration _timeLeft = Duration.zero;
@@ -39,6 +42,8 @@ class _Level3ScreenState extends State<Level3Screen> {
   @override
   void initState() {
     super.initState();
+    // --- THE FIX: Initialize the controller once ---
+    _initialAnswerController = TextEditingController();
     _initializeLevel();
   }
 
@@ -46,6 +51,8 @@ class _Level3ScreenState extends State<Level3Screen> {
   void dispose() {
     _timerSubscription?.cancel();
     _countdownTimer?.cancel();
+    // --- THE FIX: Dispose of the controller to prevent memory leaks ---
+    _initialAnswerController.dispose();
     super.dispose();
   }
 
@@ -60,17 +67,9 @@ class _Level3ScreenState extends State<Level3Screen> {
           .collection('game_settings')
           .doc('level3_settings')
           .get();
-      // THE FIX: Get the ordered list of clues from the admin settings.
       final clueOrderFromAdmin = List<String>.from(
         settingsDoc.data()?['clueOrder'] ?? [],
       );
-
-      if (clueOrderFromAdmin.isEmpty) {
-        if (mounted) {
-          setState(() => _clueOrder = []);
-        }
-        return;
-      }
 
       final snapshot = await FirebaseFirestore.instance
           .collection('game_content/level3/clues')
@@ -106,18 +105,14 @@ class _Level3ScreenState extends State<Level3Screen> {
             final secondsLeft = _timeLeft.inSeconds - 1;
             if (secondsLeft < 0) {
               timer.cancel();
-              if (!_isSubmitting) {
-                _submitScore(autoSubmitted: true);
-              }
+              if (!_isSubmitting) _submitScore(autoSubmitted: true);
             } else if (mounted) {
               setState(() => _timeLeft = Duration(seconds: secondsLeft));
             }
           });
         } else {
           setState(() => _timeLeft = Duration.zero);
-          if (!_isSubmitting) {
-            _submitScore(autoSubmitted: true);
-          }
+          if (!_isSubmitting) _submitScore(autoSubmitted: true);
         }
       } else {
         setState(() {
@@ -129,12 +124,37 @@ class _Level3ScreenState extends State<Level3Screen> {
     });
   }
 
-  // --- NEW LOGIC for handling the sequential game flow ---
+  Future<void> _handleStartingPointAnswer(String answer) async {
+    final startingClue = _allClues['starting_point'];
+    if (startingClue == null) return;
 
-  Future<void> _scanQRCode(
-    Level3Clue clueToScan, {
-    bool isInitialScan = false,
-  }) async {
+    if (answer.trim().toLowerCase() == startingClue.answer.toLowerCase()) {
+      final user = _authService.currentUser;
+      if (user == null) return;
+      await FirebaseFirestore.instance.collection('teams').doc(user.uid).set({
+        'level3Progress': {
+          'solved': ['starting_point'],
+          'currentClueId': _clueOrder.first,
+        },
+      }, SetOptions(merge: true));
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Correct! Your first location hint is revealed.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Incorrect answer. Try again!'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _scanQRCode(Level3Clue clueToScan) async {
     final scannedValue = await Navigator.push<String>(
       context,
       MaterialPageRoute(builder: (context) => const QRScannerScreen()),
@@ -142,29 +162,7 @@ class _Level3ScreenState extends State<Level3Screen> {
     if (scannedValue == null) return;
 
     if (scannedValue == clueToScan.qrCodeValue) {
-      if (isInitialScan) {
-        // If it's the first scan, create the progress tracker for the team
-        final user = _authService.currentUser;
-        if (user == null) return;
-        await FirebaseFirestore.instance
-            .collection('teams')
-            .doc(user.uid)
-            .update({
-              'level3Progress': {
-                'solved': [],
-                'currentClueId': _clueOrder.first,
-              },
-            });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('You have begun! Find your first destination.'),
-            backgroundColor: Colors.blue,
-          ),
-        );
-      } else {
-        // For all other scans, show the question dialog
-        _showQuestionDialog(clueToScan);
-      }
+      _showQuestionDialog(clueToScan);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -224,37 +222,18 @@ class _Level3ScreenState extends State<Level3Screen> {
         .collection('teams')
         .doc(user.uid);
 
-    // Use a transaction to safely read and update the team's progress
-    await FirebaseFirestore.instance.runTransaction((transaction) async {
-      final teamSnapshot = await transaction.get(teamRef);
-      final currentProgress =
-          teamSnapshot.data()?['level3Progress'] as Map<String, dynamic>? ?? {};
-      final solvedClues = List<String>.from(currentProgress['solved'] ?? []);
+    final nextClueIndex = _clueOrder.indexOf(solvedClueId) + 1;
+    final String nextClueId = (nextClueIndex >= _clueOrder.length)
+        ? 'completed'
+        : _clueOrder[nextClueIndex];
 
-      if (!solvedClues.contains(solvedClueId)) {
-        solvedClues.add(solvedClueId);
-      }
-
-      final nextClueIndex = _clueOrder.indexOf(solvedClueId) + 1;
-
-      if (nextClueIndex >= _clueOrder.length) {
-        // Last clue solved
-        transaction.update(teamRef, {
-          'level3Progress.solved': solvedClues,
-          'level3Progress.currentClueId': 'completed',
-        });
-      } else {
-        // Move to the next clue
-        transaction.update(teamRef, {
-          'level3Progress.solved': solvedClues,
-          'level3Progress.currentClueId': _clueOrder[nextClueIndex],
-        });
-      }
+    await teamRef.update({
+      'level3Progress.solved': FieldValue.arrayUnion([solvedClueId]),
+      'level3Progress.currentClueId': nextClueId,
     });
 
-    final nextClueIndex = _clueOrder.indexOf(solvedClueId) + 1;
-    if (nextClueIndex >= _clueOrder.length) {
-      _submitScore(autoSubmitted: false); // Finished the hunt
+    if (nextClueId == 'completed') {
+      _submitScore(autoSubmitted: false);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -270,36 +249,32 @@ class _Level3ScreenState extends State<Level3Screen> {
     setState(() => _isSubmitting = true);
     _countdownTimer?.cancel();
     _timerSubscription?.cancel();
-
     final user = _authService.currentUser;
     if (user == null) return;
-
-    final teamSnapshot = await FirebaseFirestore.instance
+    final teamRef = FirebaseFirestore.instance
         .collection('teams')
-        .doc(user.uid)
-        .get();
+        .doc(user.uid);
+    final teamSnapshot = await teamRef.get();
+
     final solvedClues = List<String>.from(
       teamSnapshot.data()?['level3Progress']?['solved'] ?? [],
     );
+    final score = solvedClues.where((id) => id != 'starting_point').length;
 
     final submissionData = {
-      'score': solvedClues.length,
+      'score': score,
       'totalQuestions': _clueOrder.length,
       'submittedAt': Timestamp.now(),
     };
-
-    await FirebaseFirestore.instance.collection('teams').doc(user.uid).update({
-      'level3Submission': submissionData,
-    });
-
+    await teamRef.update({'level3Submission': submissionData});
     if (mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             autoSubmitted
-                ? 'Time is up! Your final score: ${solvedClues.length}/${_clueOrder.length}'
-                : 'Level 3 complete! Your score: ${solvedClues.length}/${_clueOrder.length}',
+                ? 'Time is up! Your final score: $score/${_clueOrder.length}'
+                : 'Level 3 complete! Your score: $score/${_clueOrder.length}',
           ),
           backgroundColor: autoSubmitted ? Colors.orange : Colors.green,
         ),
@@ -313,34 +288,64 @@ class _Level3ScreenState extends State<Level3Screen> {
     final minutes = twoDigits(_timeLeft.inMinutes.remainder(60));
     final seconds = twoDigits(_timeLeft.inSeconds.remainder(60));
     final timeString = '$minutes:$seconds';
-
     final user = _authService.currentUser;
-    if (user == null) {
-      return const Scaffold(body: Center(child: Text("Error: Not logged in")));
-    }
 
-    bool canPlay = !_isLoading && !_timerNotStarted && _clueOrder.isNotEmpty;
+    Widget bodyContent;
+    if (_isLoading) {
+      bodyContent = const Center(child: CircularProgressIndicator());
+    } else if (_timerNotStarted) {
+      bodyContent = const Center(
+        child: Text(
+          "Waiting for the admin to start the timer...",
+          style: TextStyle(color: Colors.white70, fontSize: 18),
+        ),
+      );
+    } else if (_clueOrder.isEmpty || _allClues['starting_point'] == null) {
+      bodyContent = const Center(
+        child: Text(
+          "Level 3 is not yet configured by the admin.",
+          style: TextStyle(color: Colors.white70, fontSize: 18),
+        ),
+      );
+    } else {
+      bodyContent = StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('teams')
+            .doc(user!.uid)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final progressData =
+              snapshot.data!.data() as Map<String, dynamic>? ?? {};
+          final level3Progress =
+              progressData['level3Progress'] as Map<String, dynamic>?;
 
-    if (!_isLoading && _clueOrder.isEmpty) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Level 3: The Final Chase'),
-          backgroundColor: Colors.transparent,
-        ),
-        body: Container(
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage('assets/images/quiz_background.png'),
-              fit: BoxFit.cover,
-            ),
-          ),
-          child: const Center(
-            child: Text(
-              "Level 3 is not yet configured by the admin.",
-              style: TextStyle(color: Colors.white70, fontSize: 18),
-            ),
-          ),
-        ),
+          if (level3Progress == null) {
+            // --- THE FIX: Pass the persistent controller to the build method ---
+            return _buildQuestionScreen(
+              _allClues['starting_point']!,
+              _initialAnswerController,
+            );
+          }
+
+          final currentClueId = level3Progress['currentClueId'] as String;
+          if (currentClueId == 'completed') {
+            return const Center(
+              child: Text(
+                "Congratulations!",
+                style: TextStyle(color: Colors.white, fontSize: 24),
+              ),
+            );
+          }
+
+          final currentClue = _allClues[currentClueId]!;
+          final lastSolvedId = (level3Progress['solved'] as List).last;
+          final lastSolvedClue = _allClues[lastSolvedId]!;
+
+          return _buildScanScreen(currentClue, lastSolvedClue);
+        },
       );
     }
 
@@ -374,186 +379,86 @@ class _Level3ScreenState extends State<Level3Screen> {
             fit: BoxFit.cover,
           ),
         ),
-        child: canPlay
-            ? StreamBuilder<DocumentSnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('teams')
-                    .doc(user.uid)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  final progressData =
-                      snapshot.data!.data() as Map<String, dynamic>? ?? {};
-                  final level3Progress =
-                      progressData['level3Progress'] as Map<String, dynamic>?;
-
-                  if (level3Progress == null) {
-                    // State 1: User has not started Level 3 yet
-                    final initialClue = _allClues[_clueOrder.first]!;
-                    return _buildInitialScanScreen(initialClue);
-                  }
-
-                  final solvedClues = List<String>.from(
-                    level3Progress['solved'] ?? [],
-                  );
-                  String currentClueId =
-                      level3Progress['currentClueId'] ?? _clueOrder.first;
-
-                  if (currentClueId == 'completed') {
-                    // State 3: User has finished all clues
-                    return const Center(
-                      child: Text(
-                        "Congratulations! You've finished Level 3.",
-                        style: TextStyle(fontSize: 20, color: Colors.white),
-                      ),
-                    );
-                  }
-
-                  // State 2: User is in the middle of the hunt
-                  final currentClue = _allClues[currentClueId]!;
-                  final lastSolvedDeptName = solvedClues.isEmpty
-                      ? null
-                      : _allClues[solvedClues.last]?.departmentName;
-
-                  return _buildClueScreen(
-                    solvedClues,
-                    currentClue,
-                    lastSolvedDeptName,
-                  );
-                },
-              )
-            : Center(
-                child: _isLoading
-                    ? const CircularProgressIndicator()
-                    : Text(
-                        _timerNotStarted
-                            ? "Waiting for the admin to start the timer..."
-                            : "No active departments configured for Level 3.",
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 18,
-                        ),
-                      ),
-              ),
+        child: bodyContent,
       ),
     );
   }
 
-  // --- Helper Widgets to build different UI states ---
-
-  Widget _buildInitialScanScreen(Level3Clue initialClue) {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Level 3 Begins',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.cinzel(
-              fontSize: 28,
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.black.withAlpha((0.3 * 255).round()),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              "Proceed to the starting location and scan the first QR code to begin your final chase!",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.white.withAlpha((0.7 * 255).round()),
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ),
-          const SizedBox(height: 40),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.qr_code_scanner),
-            label: const Text('Scan to Begin'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              textStyle: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            onPressed: () => _scanQRCode(initialClue, isInitialScan: true),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildClueScreen(
-    List<String> solvedClues,
-    Level3Clue currentClue,
-    String? lastSolvedDeptName,
+  // --- THE FIX: Accept the controller as a parameter ---
+  Widget _buildQuestionScreen(
+    Level3Clue clue,
+    TextEditingController answerController,
   ) {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Clue ${solvedClues.length + 1}/${_clueOrder.length}',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.amber,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Show the location they just confirmed
-          if (lastSolvedDeptName != null) ...[
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(height: MediaQuery.of(context).size.height * 0.1),
             Text(
-              'LOCATION CONFIRMED:',
+              clue.departmentName,
               textAlign: TextAlign.center,
               style: GoogleFonts.cinzel(
-                fontSize: 16,
-                color: Colors.greenAccent,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              lastSolvedDeptName,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 20,
+                fontSize: 28,
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const Divider(
-              color: Colors.white24,
-              height: 40,
-              indent: 40,
-              endIndent: 40,
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.black.withAlpha(75),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                clue.question,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 18, color: Colors.white70),
+              ),
+            ),
+            const SizedBox(height: 40),
+            TextField(
+              // --- THE FIX: Use the passed-in controller ---
+              controller: answerController,
+              decoration: const InputDecoration(labelText: 'Your Answer'),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              // --- THE FIX: Read the text from the passed-in controller ---
+              onPressed: () =>
+                  _handleStartingPointAnswer(answerController.text),
+              child: const Text('Submit Answer'),
             ),
           ],
+        ),
+      ),
+    );
+  }
 
-          // Show the hint for the NEXT location
+  Widget _buildScanScreen(Level3Clue currentClue, Level3Clue lastSolvedClue) {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Text(
-            solvedClues.isEmpty
-                ? 'YOUR FIRST DESTINATION:'
-                : 'YOUR NEXT DESTINATION:',
+            'Location Confirmed: ${lastSolvedClue.departmentName}',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.cinzel(fontSize: 16, color: Colors.greenAccent),
+          ),
+          const Divider(
+            color: Colors.white24,
+            height: 40,
+            indent: 40,
+            endIndent: 40,
+          ),
+          Text(
+            'YOUR NEXT DESTINATION:',
             textAlign: TextAlign.center,
             style: GoogleFonts.cinzel(fontSize: 22, color: Colors.white),
           ),
@@ -561,16 +466,15 @@ class _Level3ScreenState extends State<Level3Screen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.black.withAlpha((0.3 * 255).round()),
+              color: Colors.black.withAlpha(75),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              _allClues[_clueOrder[solvedClues.length]]?.nextClueLocationHint ??
-                  "Error: Hint not found.",
+              lastSolvedClue.nextClueLocationHint,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 18,
-                color: Colors.white.withAlpha((0.7 * 255).round()),
+                color: Colors.white70,
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -578,7 +482,7 @@ class _Level3ScreenState extends State<Level3Screen> {
           const SizedBox(height: 40),
           ElevatedButton.icon(
             icon: const Icon(Icons.qr_code_scanner),
-            label: const Text('Scan QR Code'),
+            label: const Text('Scan QR at Location'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.amber,
               foregroundColor: Colors.black,
