@@ -7,7 +7,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-// --- THE FIX: Import the new mime package ---
 import 'package:mime/mime.dart';
 
 class ImageUploadService {
@@ -15,7 +14,6 @@ class ImageUploadService {
   final String _uploadPreset = 'treasurehunt';
 
   Future<String?> uploadImage(XFile mediaFile) async {
-    // --- THE FIX: Use the 'mime' package for reliable type detection ---
     final String? mimeType = lookupMimeType(mediaFile.path);
     final bool isVideo = mimeType?.startsWith('video/') ?? false;
     final String resourceType = isVideo ? 'video' : 'image';
@@ -38,18 +36,11 @@ class ImageUploadService {
         final responseData = await response.stream.bytesToString();
         final decodedData = json.decode(responseData);
 
-        String secureUrl = decodedData['secure_url'];
-
-        if (isVideo) {
-          int lastDot = secureUrl.lastIndexOf('.');
-          int lastSlash = secureUrl.lastIndexOf('/');
-          if (lastDot > lastSlash) {
-            secureUrl = secureUrl.substring(0, lastDot);
-          }
-          return '$secureUrl.mp4';
-        } else {
-          return secureUrl;
-        }
+        // --- THE FIX IS HERE ---
+        // We no longer need to manually change the video URL extension.
+        // Cloudinary's 'secure_url' is the final, correct URL for both images and videos.
+        // This is more robust and handles different video formats automatically.
+        return decodedData['secure_url'] as String?;
       } else {
         debugPrint('Media upload failed with status: ${response.statusCode}');
         final error = await response.stream.bytesToString();
