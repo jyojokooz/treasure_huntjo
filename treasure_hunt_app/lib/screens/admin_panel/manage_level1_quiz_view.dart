@@ -5,7 +5,7 @@
 
 // ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
-import 'dart:io'; // FIX: Corrected the import from 'dart.io' to 'dart:io'
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -39,8 +39,10 @@ class _ManageLevel1QuizViewState extends State<ManageLevel1QuizView> {
     );
     int? correctAnswerIndex = existingQuestion?.correctAnswerIndex;
 
-    XFile? pickedImage;
-    String? imageUrl = existingQuestion?.imageUrl;
+    // UPDATED: State variables for media handling
+    XFile? pickedMedia;
+    String? mediaUrl = existingQuestion?.mediaUrl;
+    MediaType? mediaType = existingQuestion?.mediaType;
     bool isUploading = false;
 
     showDialog(
@@ -49,14 +51,18 @@ class _ManageLevel1QuizViewState extends State<ManageLevel1QuizView> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            Future<void> pickImage() async {
+            // UPDATED: Generic function to pick image or video
+            Future<void> pickMedia(bool isVideo) async {
               final ImagePicker picker = ImagePicker();
-              final XFile? image = await picker.pickImage(
-                source: ImageSource.gallery,
-              );
-              if (image != null) {
+              final XFile? file = isVideo
+                  ? await picker.pickVideo(source: ImageSource.gallery)
+                  : await picker.pickImage(source: ImageSource.gallery);
+
+              if (file != null) {
                 setDialogState(() {
-                  pickedImage = image;
+                  pickedMedia = file;
+                  mediaUrl = null; // Clear existing URL if a new file is picked
+                  mediaType = isVideo ? MediaType.video : MediaType.image;
                 });
               }
             }
@@ -71,29 +77,46 @@ class _ManageLevel1QuizViewState extends State<ManageLevel1QuizView> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (pickedImage != null)
-                        Image.file(File(pickedImage!.path), height: 100)
-                      else if (imageUrl != null)
-                        Image.network(imageUrl!, height: 100),
+                      // UPDATED: Media preview logic
+                      if (pickedMedia != null)
+                        mediaType == MediaType.image
+                            ? Image.file(File(pickedMedia!.path), height: 100)
+                            : const Icon(
+                                Icons.videocam,
+                                size: 60,
+                                color: Colors.grey,
+                              )
+                      else if (mediaUrl != null)
+                        mediaType == MediaType.image
+                            ? Image.network(mediaUrl!, height: 100)
+                            : const Icon(
+                                Icons.videocam,
+                                size: 60,
+                                color: Colors.grey,
+                              ),
+
+                      // UPDATED: Buttons for image, video, and delete
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           TextButton.icon(
                             icon: const Icon(Icons.image),
-                            label: Text(
-                              imageUrl == null && pickedImage == null
-                                  ? 'Add Image'
-                                  : 'Change Image',
-                            ),
-                            onPressed: pickImage,
+                            label: const Text('Image'),
+                            onPressed: () => pickMedia(false),
                           ),
-                          if (imageUrl != null || pickedImage != null)
+                          TextButton.icon(
+                            icon: const Icon(Icons.videocam),
+                            label: const Text('Video'),
+                            onPressed: () => pickMedia(true),
+                          ),
+                          if (mediaUrl != null || pickedMedia != null)
                             IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
                               onPressed: () {
                                 setDialogState(() {
-                                  pickedImage = null;
-                                  imageUrl = null;
+                                  pickedMedia = null;
+                                  mediaUrl = null;
+                                  mediaType = null;
                                 });
                               },
                             ),
@@ -158,14 +181,15 @@ class _ManageLevel1QuizViewState extends State<ManageLevel1QuizView> {
                           if (formKey.currentState!.validate() &&
                               correctAnswerIndex != null) {
                             setDialogState(() => isUploading = true);
-                            String? finalImageUrl = imageUrl;
-
-                            if (pickedImage != null) {
-                              finalImageUrl = await _uploadService.uploadImage(
-                                pickedImage!,
+                            // UPDATED: Upload logic
+                            String? finalMediaUrl = mediaUrl;
+                            if (pickedMedia != null) {
+                              finalMediaUrl = await _uploadService.uploadImage(
+                                pickedMedia!,
                               );
                             }
 
+                            // UPDATED: Create question with new media fields
                             final newQuestion = QuizQuestion(
                               id: existingQuestion?.id ?? const Uuid().v4(),
                               questionText: questionText,
@@ -173,7 +197,10 @@ class _ManageLevel1QuizViewState extends State<ManageLevel1QuizView> {
                                   .map((c) => c.text)
                                   .toList(),
                               correctAnswerIndex: correctAnswerIndex!,
-                              imageUrl: finalImageUrl,
+                              mediaUrl: finalMediaUrl,
+                              mediaType: finalMediaUrl != null
+                                  ? mediaType
+                                  : null,
                             );
 
                             await _quizzesCollection
@@ -266,6 +293,14 @@ class _ManageLevel1QuizViewState extends State<ManageLevel1QuizView> {
                     itemCount: questions.length,
                     itemBuilder: (context, index) {
                       final question = questions[index];
+                      // UPDATED: Show correct icon for image or video
+                      IconData leadingIcon = Icons.help_outline;
+                      if (question.mediaType == MediaType.image) {
+                        leadingIcon = Icons.image;
+                      } else if (question.mediaType == MediaType.video) {
+                        leadingIcon = Icons.videocam;
+                      }
+
                       return Card(
                         color: Colors.white.withAlpha((0.9 * 255).round()),
                         margin: const EdgeInsets.symmetric(
@@ -273,11 +308,8 @@ class _ManageLevel1QuizViewState extends State<ManageLevel1QuizView> {
                           vertical: 5,
                         ),
                         child: ListTile(
-                          leading: question.imageUrl != null
-                              ? const Icon(
-                                  Icons.image,
-                                  color: Colors.blueAccent,
-                                )
+                          leading: question.mediaUrl != null
+                              ? Icon(leadingIcon, color: Colors.blueAccent)
                               : null,
                           title: Text(
                             question.questionText,

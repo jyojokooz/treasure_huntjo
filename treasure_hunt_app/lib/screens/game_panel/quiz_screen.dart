@@ -12,6 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:treasure_hunt_app/models/quiz_model.dart';
 import 'package:treasure_hunt_app/services/auth_service.dart';
 import 'package:treasure_hunt_app/services/music_service.dart';
+import 'package:video_player/video_player.dart';
 
 class QuizScreen extends StatefulWidget {
   const QuizScreen({super.key});
@@ -130,8 +131,6 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   Future<void> _setupTimer() async {
-    // --- THE FIX IS HERE ---
-    // Renamed the variable to remove the leading underscore.
     final timerDocRef = FirebaseFirestore.instance
         .collection('game_settings')
         .doc('level1_timer');
@@ -274,49 +273,66 @@ class _QuizScreenState extends State<QuizScreen> {
                   final question = _questions[index];
                   bool isLastQuestion = index == _questions.length - 1;
 
-                  return Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          'Question ${index + 1}/${_questions.length}',
-                          style: const TextStyle(
-                            color: Colors.amber,
-                            fontSize: 16,
+                  // --- THE FIX IS HERE ---
+                  // We wrap the entire page content in a SingleChildScrollView
+                  // to prevent overflows when media content is tall.
+                  return SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'Question ${index + 1}/${_questions.length}',
+                            style: const TextStyle(
+                              color: Colors.amber,
+                              fontSize: 16,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        if (question.imageUrl != null)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 24.0),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.network(
-                                question.imageUrl!,
-                                height: 180,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                                loadingBuilder: (context, child, progress) =>
-                                    progress == null
-                                    ? child
-                                    : const Center(
-                                        child: CircularProgressIndicator(),
+                          const SizedBox(height: 16),
+                          if (question.mediaUrl != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 24.0),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: question.mediaType == MediaType.video
+                                    ? _VideoPlayerWidget(
+                                        key: ValueKey(question.id),
+                                        url: question.mediaUrl!,
+                                      )
+                                    : Image.network(
+                                        question.mediaUrl!,
+                                        width: double.infinity,
+                                        fit: BoxFit.cover,
+                                        loadingBuilder:
+                                            (
+                                              context,
+                                              child,
+                                              progress,
+                                            ) => progress == null
+                                            ? child
+                                            : const Center(
+                                                child:
+                                                    CircularProgressIndicator(),
+                                              ),
                                       ),
                               ),
                             ),
+                          Text(
+                            question.questionText.toUpperCase(),
+                            style: GoogleFonts.montserrat(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
                           ),
-                        Text(
-                          question.questionText.toUpperCase(),
-                          style: GoogleFonts.montserrat(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-                        Expanded(
-                          child: ListView(
+                          const SizedBox(height: 32),
+                          // The ListView of options is no longer in an Expanded widget.
+                          // `shrinkWrap` and `NeverScrollableScrollPhysics` are added
+                          // to make it work correctly inside the SingleChildScrollView.
+                          ListView(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
                             children: List.generate(question.options.length, (
                               optionIndex,
                             ) {
@@ -366,47 +382,162 @@ class _QuizScreenState extends State<QuizScreen> {
                               );
                             }),
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        if (isLastQuestion)
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.amber,
-                              foregroundColor: Colors.black,
-                              padding: const EdgeInsets.symmetric(vertical: 18),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30),
+                          const SizedBox(height: 20),
+                          if (isLastQuestion)
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.amber,
+                                foregroundColor: Colors.black,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 18,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                disabledBackgroundColor: Colors.grey.shade800,
                               ),
-                              disabledBackgroundColor: Colors.grey.shade800,
+                              onPressed:
+                                  _isSubmitting ||
+                                      _timerNotStarted ||
+                                      _selectedAnswers.length !=
+                                          _questions.length
+                                  ? null
+                                  : () => _submitAnswers(autoSubmitted: false),
+                              child: _isSubmitting
+                                  ? const SizedBox(
+                                      height: 24,
+                                      width: 24,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.black,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Submit Final Answers',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                             ),
-                            onPressed:
-                                _isSubmitting ||
-                                    _timerNotStarted ||
-                                    _selectedAnswers.length != _questions.length
-                                ? null
-                                : () => _submitAnswers(autoSubmitted: false),
-                            child: _isSubmitting
-                                ? const SizedBox(
-                                    height: 24,
-                                    width: 24,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.black,
-                                    ),
-                                  )
-                                : const Text(
-                                    'Submit Final Answers',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   );
                 },
               ),
       ),
+    );
+  }
+}
+
+class _VideoPlayerWidget extends StatefulWidget {
+  final String url;
+  const _VideoPlayerWidget({super.key, required this.url});
+
+  @override
+  State<_VideoPlayerWidget> createState() => _VideoPlayerWidgetState();
+}
+
+class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
+  late VideoPlayerController _controller;
+  late Future<void> _initializeVideoPlayerFuture;
+  bool _isPlaying = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    _initializeVideoPlayerFuture = _controller
+        .initialize()
+        .then((_) {
+          if (mounted) {
+            setState(() {
+              _controller.setLooping(true);
+              _controller.play();
+              _isPlaying = true;
+            });
+          }
+        })
+        .catchError((error) {
+          debugPrint("Video Player Error: $error");
+        });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _togglePlayPause() {
+    setState(() {
+      if (_controller.value.isPlaying) {
+        _controller.pause();
+        _isPlaying = false;
+      } else {
+        _controller.play();
+        _isPlaying = true;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+      future: _initializeVideoPlayerFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done) {
+          if (snapshot.hasError || !_controller.value.isInitialized) {
+            return const SizedBox(
+              height: 180,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Colors.redAccent,
+                      size: 48,
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      "Could not load video",
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return AspectRatio(
+            aspectRatio: _controller.value.aspectRatio,
+            child: GestureDetector(
+              onTap: _togglePlayPause,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  VideoPlayer(_controller),
+                  AnimatedOpacity(
+                    opacity: _isPlaying ? 0.0 : 1.0,
+                    duration: const Duration(milliseconds: 300),
+                    child: Icon(
+                      Icons.play_arrow,
+                      color: Colors.white.withAlpha((0.8 * 255).round()),
+                      size: 64,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        } else {
+          return const SizedBox(
+            height: 180,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+      },
     );
   }
 }
