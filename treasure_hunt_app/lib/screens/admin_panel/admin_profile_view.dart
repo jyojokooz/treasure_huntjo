@@ -1,50 +1,240 @@
+// ===============================
+// FILE NAME: admin_profile_view.dart
+// FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\admin_panel\admin_profile_view.dart
+// ===============================
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:treasure_hunt_app/models/team_model.dart';
 import 'package:treasure_hunt_app/services/auth_service.dart';
 
-class AdminProfileView extends StatelessWidget {
+class AdminProfileView extends StatefulWidget {
   const AdminProfileView({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final authService = AuthService();
-    final userEmail = authService.currentUser?.email ?? 'No email found';
+  State<AdminProfileView> createState() => _AdminProfileViewState();
+}
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircleAvatar(
-              radius: 50,
-              // FIX: Corrected the icon name from 'shield_person_outlined'
-              child: Icon(Icons.shield_outlined, size: 50),
+class _AdminProfileViewState extends State<AdminProfileView> {
+  final AuthService _authService = AuthService();
+
+  // Dialog to promote a team captain to an admin
+  Future<void> _showPromoteAdminDialog() async {
+    final teamsSnapshot = await FirebaseFirestore.instance
+        .collection('teams')
+        .where('status', isEqualTo: 'approved')
+        .where('role', isEqualTo: 'user')
+        .get();
+
+    final availableTeams = teamsSnapshot.docs
+        .map((doc) => Team.fromMap(doc.data()))
+        .toList();
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        if (availableTeams.isEmpty) {
+          return const AlertDialog(
+            title: Text('Promote Admin'),
+            content: Text(
+              'There are no approved teams available to be promoted to admin.',
             ),
-            const SizedBox(height: 20),
-            const Text(
-              'Admin Account',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              userEmail,
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 40),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.logout),
-              label: const Text('Logout'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 30,
-                  vertical: 15,
-                ),
-              ),
+          );
+        }
+        return SimpleDialog(
+          title: const Text('Select a Team Captain to Promote'),
+          children: availableTeams.map((team) {
+            return SimpleDialogOption(
               onPressed: () {
-                authService.signOut();
+                FirebaseFirestore.instance
+                    .collection('teams')
+                    .doc(team.id)
+                    .update({'role': 'admin'});
+                Navigator.of(dialogContext).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('${team.teamName} has been promoted.'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
               },
+              child: ListTile(
+                title: Text(team.teamName),
+                subtitle: Text(team.collegeName),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  // Dialog to confirm demotion of an admin
+  Future<void> _showDemoteAdminConfirmation(Team adminTeam) async {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm Demotion'),
+        content: Text(
+          'Are you sure you want to demote ${adminTeam.teamName}? They will lose all admin privileges.',
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Demote'),
+            onPressed: () {
+              FirebaseFirestore.instance
+                  .collection('teams')
+                  .doc(adminTeam.id)
+                  .update({'role': 'user'});
+              Navigator.of(dialogContext).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('${adminTeam.teamName} has been demoted.'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUserUid = _authService.currentUser?.uid;
+
+    return ListView(
+      padding: const EdgeInsets.all(16.0),
+      children: [
+        // Card for managing current admins
+        _buildCard(
+          title: 'Current Administrators',
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('teams')
+                .where('role', isEqualTo: 'admin')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const Center(child: Text('No admins found.'));
+              }
+
+              final adminTeams = snapshot.data!.docs
+                  .map(
+                    (doc) => Team.fromMap(doc.data() as Map<String, dynamic>),
+                  )
+                  .toList();
+
+              return Column(
+                children: adminTeams.map((adminTeam) {
+                  final isCurrentUser = adminTeam.id == currentUserUid;
+                  return ListTile(
+                    leading: Icon(
+                      isCurrentUser
+                          ? Icons.shield_rounded
+                          : Icons.shield_outlined,
+                      color: isCurrentUser ? Colors.amber : Colors.white70,
+                    ),
+                    title: Text(
+                      adminTeam.teamName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    subtitle: Text(
+                      adminTeam.teamCaptainEmail,
+                      // ignore: deprecated_member_use
+                      style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                    ),
+                    trailing: isCurrentUser
+                        ? const Padding(
+                            padding: EdgeInsets.only(right: 8.0),
+                            child: Text(
+                              'You',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          )
+                        : TextButton(
+                            child: const Text('Demote'),
+                            onPressed: () =>
+                                _showDemoteAdminConfirmation(adminTeam),
+                          ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Card for actions
+        _buildCard(
+          title: 'Actions',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ElevatedButton.icon(
+                icon: const Icon(Icons.add_moderator_outlined),
+                label: const Text('Promote New Admin'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                ),
+                onPressed: _showPromoteAdminDialog,
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.logout),
+                label: const Text('Logout'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                ),
+                onPressed: () {
+                  _authService.signOut();
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Helper widget for consistent card styling
+  Widget _buildCard({required String title, required Widget child}) {
+    return Card(
+      color: Colors.white.withAlpha((0.1 * 255).round()),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
+            const Divider(color: Colors.white24, height: 20),
+            child,
           ],
         ),
       ),
