@@ -17,6 +17,7 @@ class AdminProfileView extends StatefulWidget {
 
 class _AdminProfileViewState extends State<AdminProfileView> {
   final AuthService _authService = AuthService();
+  static const String _ownerEmail = 'joelraphael6425@gmail.com';
 
   // Dialog to promote a team captain to an admin
   Future<void> _showPromoteAdminDialog() async {
@@ -86,6 +87,7 @@ class _AdminProfileViewState extends State<AdminProfileView> {
             onPressed: () => Navigator.of(dialogContext).pop(),
           ),
           TextButton(
+            // FIX 1: Corrected typo from 'stylefrom' to 'styleFrom'
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Demote'),
             onPressed: () {
@@ -136,15 +138,27 @@ class _AdminProfileViewState extends State<AdminProfileView> {
                   )
                   .toList();
 
+              // Sort to ensure owner is always at the top
+              adminTeams.sort((a, b) {
+                if (a.teamCaptainEmail == _ownerEmail) return -1;
+                if (b.teamCaptainEmail == _ownerEmail) return 1;
+                return a.teamName.compareTo(b.teamName);
+              });
+
               return Column(
                 children: adminTeams.map((adminTeam) {
                   final isCurrentUser = adminTeam.id == currentUserUid;
+                  final bool isOwner =
+                      adminTeam.teamCaptainEmail == _ownerEmail;
+
                   return ListTile(
                     leading: Icon(
-                      isCurrentUser
+                      isOwner
                           ? Icons.shield_rounded
+                          : isCurrentUser
+                          ? Icons.shield
                           : Icons.shield_outlined,
-                      color: isCurrentUser ? Colors.amber : Colors.white70,
+                      color: isOwner ? Colors.amber : Colors.white70,
                     ),
                     title: Text(
                       adminTeam.teamName,
@@ -155,10 +169,22 @@ class _AdminProfileViewState extends State<AdminProfileView> {
                     ),
                     subtitle: Text(
                       adminTeam.teamCaptainEmail,
-                      // ignore: deprecated_member_use
-                      style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                      // FIX 2: Replaced deprecated 'withOpacity'
+                      style: TextStyle(
+                        color: Colors.white.withAlpha((0.7 * 255).round()),
+                      ),
                     ),
-                    trailing: isCurrentUser
+                    trailing: isOwner
+                        ? const Chip(
+                            label: Text('Owner'),
+                            backgroundColor: Colors.amber,
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            labelStyle: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        : isCurrentUser
                         ? const Padding(
                             padding: EdgeInsets.only(right: 8.0),
                             child: Text(
@@ -218,6 +244,7 @@ class _AdminProfileViewState extends State<AdminProfileView> {
   // Helper widget for consistent card styling
   Widget _buildCard({required String title, required Widget child}) {
     return Card(
+      // FIX 2: Replaced deprecated 'withOpacity'
       color: Colors.white.withAlpha((0.1 * 255).round()),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
