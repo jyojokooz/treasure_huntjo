@@ -19,6 +19,9 @@ class ManageTeamsView extends StatefulWidget {
 class _ManageTeamsViewState extends State<ManageTeamsView> {
   // State variable to track the currently selected filter.
   TeamStatusFilter _currentFilter = TeamStatusFilter.pending;
+  final _levelsDocRef = FirebaseFirestore.instance
+      .collection('game_settings')
+      .doc('levels');
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +37,10 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
         children: [
           // The "Pending" / "Approved" filter buttons at the top.
           _buildFilterButtons(),
+
+          // NEW: Add the promotion announcement section for the 'Approved' tab
+          if (_currentFilter == TeamStatusFilter.approved)
+            _buildAnnouncePromotionsSection(),
 
           // The main content area that displays the list of teams.
           Expanded(
@@ -113,6 +120,83 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
   }
 
   // --- Helper Methods ---
+
+  // NEW WIDGET to build the announcement section
+  Widget _buildAnnouncePromotionsSection() {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _levelsDocRef.snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox.shrink();
+
+        final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
+        final bool lvl2Announced = data['level2PromotionsComplete'] ?? false;
+        final bool lvl3Announced = data['level3PromotionsComplete'] ?? false;
+
+        return Card(
+          // ignore: deprecated_member_use
+          color: Colors.white.withOpacity(0.1),
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              children: [
+                const Text(
+                  'After promoting teams, announce it to all players.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: Colors.white70),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: lvl2Announced
+                            ? null
+                            : () => _levelsDocRef.set({
+                                'level2PromotionsComplete': true,
+                              }, SetOptions(merge: true)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade700,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Announce Lvl 2'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: lvl3Announced
+                            ? null
+                            : () => _levelsDocRef.set({
+                                'level3PromotionsComplete': true,
+                              }, SetOptions(merge: true)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade700,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Announce Lvl 3'),
+                      ),
+                    ),
+                  ],
+                ),
+                if (lvl2Announced || lvl3Announced)
+                  TextButton(
+                    onPressed: () => _levelsDocRef.set({
+                      'level2PromotionsComplete': false,
+                      'level3PromotionsComplete': false,
+                    }, SetOptions(merge: true)),
+                    child: const Text(
+                      'Reset Announcements',
+                      style: TextStyle(color: Colors.orange, fontSize: 12),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   // Displays a confirmation dialog before revoking a team's 'approved' status.
   Future<void> _showMoveToPendingConfirmation(
@@ -210,7 +294,7 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
     );
   }
 
-  // Builds the controls for the 'Approved' teams list, including the Lvl 2 switch.
+  // Builds the controls for the 'Approved' teams list, including the Lvl 2/3 switches.
   Widget _buildApprovedActionButtons(
     BuildContext context,
     DocumentReference docRef,
@@ -237,7 +321,7 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
           ],
         ),
         const SizedBox(width: 4),
-        // NEW: Level 3 eligibility switch
+        // Level 3 eligibility switch
         Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

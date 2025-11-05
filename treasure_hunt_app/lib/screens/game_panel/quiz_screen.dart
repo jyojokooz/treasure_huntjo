@@ -179,11 +179,16 @@ class _QuizScreenState extends State<QuizScreen> {
       }
     }
 
+    // ** THE FIX IS HERE **
+    // Get the specific order of question IDs that the user saw.
+    final questionOrder = _questions.map((q) => q.id).toList();
+
     final submissionData = {
       'score': score,
       'totalQuestions': _questions.length,
       'submittedAt': Timestamp.now(),
       'answers': _selectedAnswers.map((k, v) => MapEntry(k.toString(), v)),
+      'questionOrder': questionOrder, // Save this order with the submission.
     };
 
     final user = _auth.currentUser;
@@ -273,9 +278,6 @@ class _QuizScreenState extends State<QuizScreen> {
                   final question = _questions[index];
                   bool isLastQuestion = index == _questions.length - 1;
 
-                  // --- THE FIX IS HERE ---
-                  // We wrap the entire page content in a SingleChildScrollView
-                  // to prevent overflows when media content is tall.
                   return SingleChildScrollView(
                     child: Padding(
                       padding: const EdgeInsets.all(24.0),
@@ -327,9 +329,6 @@ class _QuizScreenState extends State<QuizScreen> {
                             ),
                           ),
                           const SizedBox(height: 32),
-                          // The ListView of options is no longer in an Expanded widget.
-                          // `shrinkWrap` and `NeverScrollableScrollPhysics` are added
-                          // to make it work correctly inside the SingleChildScrollView.
                           ListView(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),

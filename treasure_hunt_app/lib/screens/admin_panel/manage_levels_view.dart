@@ -59,7 +59,7 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     super.dispose();
   }
 
-  // --- NEW: Function to reset a specific level ---
+  // Function to reset a specific level's progress for all teams.
   Future<void> _resetLevelProgress(
     String levelName,
     String submissionField,
@@ -116,6 +116,7 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     );
   }
 
+  // Function to end the game and show the winner screen to all players.
   Future<void> _endGameAndAnnounceWinners() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -155,6 +156,7 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     }
   }
 
+  // Function to completely reset the game state for a new event.
   Future<void> _resetEntireGame() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -181,6 +183,9 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     final batch = firestore.batch();
     batch.set(_levelsDocRef, {
       'isGameFinished': false,
+      // Reset the announcement flags for promotions
+      'level2PromotionsComplete': false,
+      'level3PromotionsComplete': false,
     }, SetOptions(merge: true));
     batch.set(_level1TimerDocRef, {'endTime': null}, SetOptions(merge: true));
     batch.set(_level2TimerDocRef, {'endTime': null}, SetOptions(merge: true));
@@ -207,6 +212,7 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     );
   }
 
+  // Helper to start a level timer.
   Future<void> _startLevel(
     DocumentReference timerDocRef,
     int minutes,
@@ -225,6 +231,7 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     );
   }
 
+  // Helper to stop a level timer.
   Future<void> _stopLevel(
     DocumentReference timerDocRef,
     String levelName,
@@ -429,7 +436,6 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
     );
   }
 
-  // --- WIDGET REWRITE: Added the reset button and submissionField parameter ---
   Widget _buildTimerControls({
     required DocumentReference timerDocRef,
     required TextEditingController durationController,
@@ -514,7 +520,7 @@ class _ManageLevelsViewState extends State<ManageLevelsView> {
               ],
             ),
             const SizedBox(height: 10),
-            // NEW: Reset Level Button
+            // Reset Level Button
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(

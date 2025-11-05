@@ -1,3 +1,8 @@
+// ===============================
+// FILE NAME: level1_leaderboard_view.dart
+// FILE PATH: C:\treasurehunt\treasure_huntjo\treasure_hunt_app\lib\screens\game_panel\level1_leaderboard_view.dart
+// ===============================
+
 // ignore_for_file: deprecated_member_use
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,8 +12,6 @@ import 'package:treasure_hunt_app/models/quiz_model.dart';
 import 'package:treasure_hunt_app/models/team_model.dart';
 
 class Level1LeaderboardView extends StatefulWidget {
-  // A boolean to determine if the view is for an admin.
-  // Defaults to false, making it safe to use for players.
   final bool isAdminView;
 
   const Level1LeaderboardView({super.key, this.isAdminView = false});
@@ -28,7 +31,6 @@ class _Level1LeaderboardViewState extends State<Level1LeaderboardView> {
     _fetchQuestions();
   }
 
-  // Fetches all Level 1 questions from Firestore to compare against team answers.
   Future<void> _fetchQuestions() async {
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -54,7 +56,6 @@ class _Level1LeaderboardViewState extends State<Level1LeaderboardView> {
     }
   }
 
-  // Handles the logic for resetting all scores after confirmation.
   Future<void> _resetLeaderboard() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -128,8 +129,6 @@ class _Level1LeaderboardViewState extends State<Level1LeaderboardView> {
     }
   }
 
-  // --- UI Helper Widgets ---
-
   Widget _buildRankWidget(int rank) {
     switch (rank) {
       case 1:
@@ -149,8 +148,6 @@ class _Level1LeaderboardViewState extends State<Level1LeaderboardView> {
         );
       default:
         return CircleAvatar(
-          // ignore: duplicate_ignore
-          // ignore: deprecated_member_use
           backgroundColor: Colors.white.withOpacity(0.2),
           child: Text(
             '$rank',
@@ -163,14 +160,72 @@ class _Level1LeaderboardViewState extends State<Level1LeaderboardView> {
     }
   }
 
+  // --- THIS ENTIRE WIDGET HAS BEEN REWORKED TO FIX THE LOGIC ---
   Widget _buildExpansionDetails(Map<String, dynamic> submission) {
     final score = submission['score'];
     final total = submission['totalQuestions'];
     final submittedAt = (submission['submittedAt'] as Timestamp).toDate();
     final formattedTime = DateFormat('MMM d, hh:mm a').format(submittedAt);
+
+    // ** THE FIX STARTS HERE **
+    // 1. Get the order of questions the team actually saw.
+    final questionOrder = List<String>.from(submission['questionOrder'] ?? []);
     final teamAnswers = (submission['answers'] as Map<String, dynamic>).map(
       (key, value) => MapEntry(int.parse(key), value as int),
     );
+
+    // 2. Create a lookup map for all available questions for quick access.
+    final allQuestionsMap = {for (var q in _questions) q.id: q};
+
+    // 3. Prepare the widget for the answer breakdown.
+    Widget breakdownWidget;
+    if (questionOrder.isEmpty) {
+      // Fallback for old submissions that don't have the question order saved.
+      breakdownWidget = Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16.0),
+        child: Center(
+          child: Text(
+            'Detailed answer breakdown is not available for this submission.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ),
+      );
+    } else {
+      // Build the list of answers based on the correct, saved order.
+      breakdownWidget = Column(
+        children: List.generate(questionOrder.length, (qIndex) {
+          final questionId = questionOrder[qIndex];
+          final question = allQuestionsMap[questionId];
+
+          // Gracefully handle if a question was deleted after the team submitted.
+          if (question == null) {
+            return ListTile(
+              leading: const Icon(Icons.help_outline, color: Colors.grey),
+              title: Text(
+                'Question ${qIndex + 1}: Data no longer available.',
+                style: const TextStyle(
+                  fontStyle: FontStyle.italic,
+                  color: Colors.grey,
+                ),
+              ),
+            );
+          }
+
+          final teamAnswerIndex = teamAnswers[qIndex];
+          final correctAnswerIndex = question.correctAnswerIndex;
+          return _buildAnswerDetailRow(
+            qIndex,
+            question,
+            teamAnswerIndex,
+            correctAnswerIndex,
+          );
+        }),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -206,17 +261,7 @@ class _Level1LeaderboardViewState extends State<Level1LeaderboardView> {
             ),
           ),
           const SizedBox(height: 10),
-          ...List.generate(_questions.length, (qIndex) {
-            final question = _questions[qIndex];
-            final teamAnswerIndex = teamAnswers[qIndex];
-            final correctAnswerIndex = question.correctAnswerIndex;
-            return _buildAnswerDetailRow(
-              qIndex,
-              question,
-              teamAnswerIndex,
-              correctAnswerIndex,
-            );
-          }),
+          breakdownWidget, // Use the prepared widget here.
         ],
       ),
     );
@@ -306,10 +351,8 @@ class _Level1LeaderboardViewState extends State<Level1LeaderboardView> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Level 1 Leaderboard'),
-        // The AppBar background is transparent so it blends with any parent widget.
         backgroundColor: Colors.transparent,
         elevation: 0,
-        // Conditionally show the reset button ONLY if it's the admin view.
         actions: widget.isAdminView
             ? [
                 if (_isResetting)
@@ -333,16 +376,12 @@ class _Level1LeaderboardViewState extends State<Level1LeaderboardView> {
                     onPressed: _resetLeaderboard,
                   ),
               ]
-            : null, // No actions for the player view.
+            : null,
       ),
-      // The background is only applied if it's the admin's standalone view.
-      // For players, it's transparent, letting the dashboard's background show through.
       backgroundColor: widget.isAdminView
           ? const Color(0xFF141E30)
           : Colors.transparent,
       body: Container(
-        // For the admin view, we add a gradient to match the app bar.
-        // For the player view, this container is effectively invisible.
         decoration: widget.isAdminView
             ? const BoxDecoration(
                 gradient: LinearGradient(

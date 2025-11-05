@@ -26,8 +26,6 @@ class DecisionScreen extends StatelessWidget {
       return const Scaffold(body: Center(child: Text('Error: No user found.')));
     }
 
-    // --- THE FIX IS HERE: The logic has been restructured ---
-    // We now fetch the user's team data FIRST, because their role is the highest priority.
     return StreamBuilder<Team?>(
       stream: firestoreService.streamTeam(user.uid),
       builder: (context, teamSnapshot) {
@@ -73,14 +71,10 @@ class DecisionScreen extends StatelessWidget {
 
         final team = teamSnapshot.data!;
 
-        // 1. HIGHEST PRIORITY CHECK: Is the user an admin?
-        // If yes, always show the admin dashboard, regardless of game state.
         if (team.role == 'admin') {
           return const AdminDashboard();
         }
 
-        // 2. If not an admin, THEN we check the game's overall state.
-        // This StreamBuilder is now nested inside the player's logic path.
         return StreamBuilder<DocumentSnapshot>(
           stream: FirebaseFirestore.instance
               .collection('game_settings')
@@ -98,14 +92,15 @@ class DecisionScreen extends StatelessWidget {
                 gameSettingsSnapshot.data?.data() as Map<String, dynamic>?;
             final bool isGameFinished = data?['isGameFinished'] ?? false;
 
-            // 2a. If the game is finished, show players the winner screen.
             if (isGameFinished) {
               return const WinnerAnnouncementScreen();
             }
 
-            // 2b. If the game is NOT finished, proceed with the normal player status checks.
             switch (team.status) {
               case 'approved':
+                // --- THE FIX ---
+                // Removed the ValueKey. We now pass the initial team data,
+                // and the dashboard will handle its own updates via a direct stream.
                 return GamerDashboard(team: team);
               case 'pending':
                 return PendingScreen(teamName: team.teamName);
