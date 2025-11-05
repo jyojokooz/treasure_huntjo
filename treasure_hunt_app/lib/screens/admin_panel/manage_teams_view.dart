@@ -38,7 +38,7 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
           // The "Pending" / "Approved" filter buttons at the top.
           _buildFilterButtons(),
 
-          // NEW: Add the promotion announcement section for the 'Approved' tab
+          // Add the promotion announcement section for the 'Approved' tab
           if (_currentFilter == TeamStatusFilter.approved)
             _buildAnnouncePromotionsSection(),
 
@@ -83,6 +83,7 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
                         horizontal: 10,
                         vertical: 5,
                       ),
+                      // --- THE FIX IS APPLIED HERE ---
                       child: ListTile(
                         title: Text(
                           team.teamName,
@@ -91,22 +92,37 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
                             color: Colors.white,
                           ),
                         ),
-                        subtitle: Text(
-                          'College: ${team.collegeName}',
-                          style: TextStyle(
-                            // ignore: deprecated_member_use
-                            color: Colors.white.withOpacity(0.7),
-                          ),
-                        ),
-                        // This conditional logic displays the correct action buttons
-                        // based on the currently selected filter.
-                        trailing: _currentFilter == TeamStatusFilter.pending
-                            ? _buildPendingActionButtons(doc.reference)
-                            : _buildApprovedActionButtons(
+                        // We replace the simple Text subtitle with a Column
+                        // to hold both the college name and the action buttons.
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              // Add a little top padding to the college name
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Text(
+                                'College: ${team.collegeName}',
+                                style: TextStyle(
+                                  // ignore: deprecated_member_use
+                                  color: Colors.white.withOpacity(0.7),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8), // Spacing
+                            // Show the correct buttons based on the filter
+                            if (_currentFilter == TeamStatusFilter.approved)
+                              _buildApprovedActionButtons(
                                 context,
                                 doc.reference,
                                 team,
                               ),
+                          ],
+                        ),
+                        // The trailing property is now used only for the pending list.
+                        // For the approved list, this is null.
+                        trailing: _currentFilter == TeamStatusFilter.pending
+                            ? _buildPendingActionButtons(doc.reference)
+                            : null,
                       ),
                     );
                   }).toList(),
@@ -121,7 +137,7 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
 
   // --- Helper Methods ---
 
-  // NEW WIDGET to build the announcement section
+  // WIDGET to build the announcement section
   Widget _buildAnnouncePromotionsSection() {
     return StreamBuilder<DocumentSnapshot>(
       stream: _levelsDocRef.snapshots(),
@@ -294,49 +310,39 @@ class _ManageTeamsViewState extends State<ManageTeamsView> {
     );
   }
 
-  // Builds the controls for the 'Approved' teams list, including the Lvl 2/3 switches.
+  // Builds the controls for the 'Approved' teams list. This now returns a Row
+  // which will be placed inside the subtitle Column.
   Widget _buildApprovedActionButtons(
     BuildContext context,
     DocumentReference docRef,
     Team team,
   ) {
     return Row(
+      // Let the row take up only the space it needs
       mainAxisSize: MainAxisSize.min,
       children: [
         // Level 2 eligibility switch
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'Lvl 2',
-              style: TextStyle(fontSize: 10, color: Colors.white70),
-            ),
-            Switch(
-              value: team.isEligibleForLevel2,
-              onChanged: (value) =>
-                  docRef.update({'isEligibleForLevel2': value}),
-              activeThumbColor: Colors.amber,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-          ],
+        const Text(
+          'Lvl 2',
+          style: TextStyle(fontSize: 10, color: Colors.white70),
+        ),
+        Switch(
+          value: team.isEligibleForLevel2,
+          onChanged: (value) => docRef.update({'isEligibleForLevel2': value}),
+          activeThumbColor: Colors.amber,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
         const SizedBox(width: 4),
         // Level 3 eligibility switch
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'Lvl 3',
-              style: TextStyle(fontSize: 10, color: Colors.white70),
-            ),
-            Switch(
-              value: team.isEligibleForLevel3,
-              onChanged: (value) =>
-                  docRef.update({'isEligibleForLevel3': value}),
-              activeThumbColor: Colors.amber,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-          ],
+        const Text(
+          'Lvl 3',
+          style: TextStyle(fontSize: 10, color: Colors.white70),
+        ),
+        Switch(
+          value: team.isEligibleForLevel3,
+          onChanged: (value) => docRef.update({'isEligibleForLevel3': value}),
+          activeThumbColor: Colors.amber,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
         const SizedBox(width: 8),
         // Move back to pending button

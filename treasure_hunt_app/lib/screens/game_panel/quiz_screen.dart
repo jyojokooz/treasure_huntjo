@@ -28,10 +28,12 @@ class _QuizScreenState extends State<QuizScreen> {
   StreamSubscription? _timerSubscription;
   Timer? _countdownTimer;
   Duration _timeLeft = Duration.zero;
-  bool _timerNotStarted = false;
+  bool _timerNotStarted = true;
   List<QuizQuestion> _questions = [];
   bool _isLoading = true;
   bool _isSubmitting = false;
+
+  bool _isPreGameCountdown = false;
 
   @override
   void initState() {
@@ -49,6 +51,71 @@ class _QuizScreenState extends State<QuizScreen> {
     super.dispose();
   }
 
+  // --- THIS IS THE KEY FIX ---
+  Future<void> _setupTimer() async {
+    final timerDocRef = FirebaseFirestore.instance
+        .collection('game_settings')
+        .doc('level1_timer');
+    _timerSubscription = timerDocRef.snapshots().listen((timerSnap) {
+      if (!mounted) return;
+      final data = timerSnap.data();
+      final endTime = (data?['endTime'] as Timestamp?)?.toDate();
+      final countdownEndTime = (data?['countdownEndTime'] as Timestamp?)
+          ?.toDate();
+
+      _countdownTimer?.cancel();
+      final now = DateTime.now();
+
+      if (countdownEndTime != null && countdownEndTime.isAfter(now)) {
+        // --- State 1: Pre-game countdown is active ---
+        setState(() {
+          _isPreGameCountdown = true;
+          _timerNotStarted = false;
+          _timeLeft = countdownEndTime.difference(now);
+        });
+        _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          final secondsLeft = _timeLeft.inSeconds - 1;
+          if (secondsLeft < 0) {
+            timer.cancel();
+            // PROACTIVE FIX: Don't wait for Firestore. Switch the UI immediately.
+            // The stream listener will naturally pick up the main game timer when it arrives.
+            if (mounted) {
+              setState(() {
+                _isPreGameCountdown = false;
+              });
+            }
+          } else if (mounted) {
+            setState(() => _timeLeft = Duration(seconds: secondsLeft));
+          }
+        });
+      } else if (endTime != null && endTime.isAfter(now)) {
+        // --- State 2: Main game timer is active ---
+        setState(() {
+          _isPreGameCountdown = false;
+          _timerNotStarted = false;
+          _timeLeft = endTime.difference(now);
+        });
+        _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          final secondsLeft = _timeLeft.inSeconds - 1;
+          if (secondsLeft < 0) {
+            timer.cancel();
+            if (!_isSubmitting) _submitAnswers(autoSubmitted: true);
+          } else if (mounted) {
+            setState(() => _timeLeft = Duration(seconds: secondsLeft));
+          }
+        });
+      } else {
+        // --- State 3: No timer is active ---
+        setState(() {
+          _isPreGameCountdown = false;
+          _timeLeft = Duration.zero;
+          _timerNotStarted = true;
+        });
+      }
+    });
+  }
+
+  // (The rest of the file remains unchanged)
   Future<void> _initializeLevel() async {
     final user = _auth.currentUser;
     if (user == null) {
@@ -130,42 +197,6 @@ class _QuizScreenState extends State<QuizScreen> {
     }
   }
 
-  Future<void> _setupTimer() async {
-    final timerDocRef = FirebaseFirestore.instance
-        .collection('game_settings')
-        .doc('level1_timer');
-    _timerSubscription = timerDocRef.snapshots().listen((timerSnap) {
-      if (!mounted) return;
-      final data = timerSnap.data();
-      final endTime = (data?['endTime'] as Timestamp?)?.toDate();
-      _countdownTimer?.cancel();
-      if (endTime != null) {
-        setState(() => _timerNotStarted = false);
-        final now = DateTime.now();
-        if (endTime.isAfter(now)) {
-          _timeLeft = endTime.difference(now);
-          _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-            final secondsLeft = _timeLeft.inSeconds - 1;
-            if (secondsLeft < 0) {
-              timer.cancel();
-              if (!_isSubmitting) _submitAnswers(autoSubmitted: true);
-            } else if (mounted) {
-              setState(() => _timeLeft = Duration(seconds: secondsLeft));
-            }
-          });
-        } else {
-          setState(() => _timeLeft = Duration.zero);
-          if (!_isSubmitting) _submitAnswers(autoSubmitted: true);
-        }
-      } else {
-        setState(() {
-          _timeLeft = Duration.zero;
-          _timerNotStarted = true;
-        });
-      }
-    });
-  }
-
   Future<void> _submitAnswers({bool autoSubmitted = false}) async {
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
@@ -179,16 +210,13 @@ class _QuizScreenState extends State<QuizScreen> {
       }
     }
 
-    // ** THE FIX IS HERE **
-    // Get the specific order of question IDs that the user saw.
     final questionOrder = _questions.map((q) => q.id).toList();
-
     final submissionData = {
       'score': score,
       'totalQuestions': _questions.length,
       'submittedAt': Timestamp.now(),
       'answers': _selectedAnswers.map((k, v) => MapEntry(k.toString(), v)),
-      'questionOrder': questionOrder, // Save this order with the submission.
+      'questionOrder': questionOrder,
     };
 
     final user = _auth.currentUser;
@@ -223,9 +251,22 @@ class _QuizScreenState extends State<QuizScreen> {
     final seconds = twoDigits(_timeLeft.inSeconds.remainder(60));
     final timeString = '$minutes:$seconds';
 
+    Widget bodyContent;
+    if (_isLoading) {
+      bodyContent = const Center(child: CircularProgressIndicator());
+    } else if (_timerNotStarted) {
+      bodyContent = _buildWaitingUI();
+    } else if (_isPreGameCountdown) {
+      bodyContent = _buildCountdownUI(timeString);
+    } else {
+      bodyContent = _buildQuizUI();
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Level 1: Mind Spark'),
+        title: Text(
+          _isPreGameCountdown ? 'Level 1 Starting Soon' : 'Level 1: Mind Spark',
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
@@ -253,178 +294,196 @@ class _QuizScreenState extends State<QuizScreen> {
             fit: BoxFit.cover,
           ),
         ),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _timerNotStarted
-            ? const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(20.0),
-                  child: Text(
-                    "Waiting for the admin to start the timer...",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontStyle: FontStyle.italic,
-                      color: Colors.white70,
+        child: bodyContent,
+      ),
+    );
+  }
+
+  Widget _buildCountdownUI(String timeString) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            'LEVEL 1 BEGINS IN',
+            style: GoogleFonts.cinzel(
+              fontSize: 24,
+              color: Colors.white70,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            timeString,
+            style: GoogleFonts.bangers(
+              fontSize: 100,
+              color: Colors.amber,
+              shadows: [
+                const Shadow(
+                  color: Colors.black,
+                  blurRadius: 10,
+                  offset: Offset(2, 2),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWaitingUI() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(20.0),
+        child: Text(
+          "Waiting for the admin to start the timer...",
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 18,
+            fontStyle: FontStyle.italic,
+            color: Colors.white70,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuizUI() {
+    return PageView.builder(
+      controller: _pageController,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _questions.length,
+      itemBuilder: (context, index) {
+        final question = _questions[index];
+        bool isLastQuestion = index == _questions.length - 1;
+
+        return SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Question ${index + 1}/${_questions.length}',
+                  style: const TextStyle(color: Colors.amber, fontSize: 16),
+                ),
+                const SizedBox(height: 16),
+                if (question.mediaUrl != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 24.0),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: question.mediaType == MediaType.video
+                          ? _VideoPlayerWidget(
+                              key: ValueKey(question.id),
+                              url: question.mediaUrl!,
+                            )
+                          : Image.network(
+                              question.mediaUrl!,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, progress) =>
+                                  progress == null
+                                  ? child
+                                  : const Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                            ),
                     ),
                   ),
+                Text(
+                  question.questionText.toUpperCase(),
+                  style: GoogleFonts.montserrat(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
-              )
-            : PageView.builder(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _questions.length,
-                itemBuilder: (context, index) {
-                  final question = _questions[index];
-                  bool isLastQuestion = index == _questions.length - 1;
-
-                  return SingleChildScrollView(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            'Question ${index + 1}/${_questions.length}',
-                            style: const TextStyle(
-                              color: Colors.amber,
-                              fontSize: 16,
-                            ),
+                const SizedBox(height: 32),
+                ListView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: List.generate(question.options.length, (
+                    optionIndex,
+                  ) {
+                    bool isSelected = _selectedAnswers[index] == optionIndex;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6.0),
+                      child: OutlinedButton(
+                        onPressed: () => _saveAnswer(index, optionIndex),
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: isSelected
+                              ? Colors.amber.withAlpha((0.2 * 255).round())
+                              : Colors.black.withAlpha((0.3 * 255).round()),
+                          side: BorderSide(
+                            color: isSelected
+                                ? Colors.amber
+                                : Colors.grey.shade700,
+                            width: 2,
                           ),
-                          const SizedBox(height: 16),
-                          if (question.mediaUrl != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 24.0),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: question.mediaType == MediaType.video
-                                    ? _VideoPlayerWidget(
-                                        key: ValueKey(question.id),
-                                        url: question.mediaUrl!,
-                                      )
-                                    : Image.network(
-                                        question.mediaUrl!,
-                                        width: double.infinity,
-                                        fit: BoxFit.cover,
-                                        loadingBuilder:
-                                            (
-                                              context,
-                                              child,
-                                              progress,
-                                            ) => progress == null
-                                            ? child
-                                            : const Center(
-                                                child:
-                                                    CircularProgressIndicator(),
-                                              ),
-                                      ),
-                              ),
-                            ),
-                          Text(
-                            question.questionText.toUpperCase(),
-                            style: GoogleFonts.montserrat(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          const SizedBox(height: 32),
-                          ListView(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            children: List.generate(question.options.length, (
-                              optionIndex,
-                            ) {
-                              bool isSelected =
-                                  _selectedAnswers[index] == optionIndex;
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 6.0,
-                                ),
-                                child: OutlinedButton(
-                                  onPressed: () =>
-                                      _saveAnswer(index, optionIndex),
-                                  style: OutlinedButton.styleFrom(
-                                    backgroundColor: isSelected
-                                        ? Colors.amber.withAlpha(
-                                            (0.2 * 255).round(),
-                                          )
-                                        : Colors.black.withAlpha(
-                                            (0.3 * 255).round(),
-                                          ),
-                                    side: BorderSide(
-                                      color: isSelected
-                                          ? Colors.amber
-                                          : Colors.grey.shade700,
-                                      width: 2,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 18,
-                                      horizontal: 16,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    question.options[optionIndex],
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? Colors.amber
-                                          : Colors.white.withOpacity(0.8),
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 18,
+                            horizontal: 16,
                           ),
-                          const SizedBox(height: 20),
-                          if (isLastQuestion)
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.amber,
-                                foregroundColor: Colors.black,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 18,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
-                                disabledBackgroundColor: Colors.grey.shade800,
-                              ),
-                              onPressed:
-                                  _isSubmitting ||
-                                      _timerNotStarted ||
-                                      _selectedAnswers.length !=
-                                          _questions.length
-                                  ? null
-                                  : () => _submitAnswers(autoSubmitted: false),
-                              child: _isSubmitting
-                                  ? const SizedBox(
-                                      height: 24,
-                                      width: 24,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.black,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Submit Final Answers',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                            ),
-                        ],
+                        ),
+                        child: Text(
+                          question.options[optionIndex],
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: isSelected
+                                ? Colors.amber
+                                : Colors.white.withOpacity(0.8),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
+                    );
+                  }),
+                ),
+                const SizedBox(height: 20),
+                if (isLastQuestion)
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      disabledBackgroundColor: Colors.grey.shade800,
                     ),
-                  );
-                },
-              ),
-      ),
+                    onPressed:
+                        _isSubmitting ||
+                            _timerNotStarted ||
+                            _selectedAnswers.length != _questions.length
+                        ? null
+                        : () => _submitAnswers(autoSubmitted: false),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            height: 24,
+                            width: 24,
+                            child: CircularProgressIndicator(
+                              color: Colors.black,
+                            ),
+                          )
+                        : const Text(
+                            'Submit Final Answers',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

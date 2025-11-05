@@ -20,16 +20,13 @@ class Level2PuzzleScreen extends StatefulWidget {
 }
 
 class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
-  final _timerDocRef = FirebaseFirestore.instance
-      .collection('game_settings')
-      .doc('level2_timer');
   final _textController = TextEditingController();
   final _authService = AuthService();
 
   StreamSubscription? _timerSubscription;
   Timer? _countdownTimer;
   Duration _timeLeft = Duration.zero;
-  bool _timerNotStarted = false;
+  bool _timerNotStarted = true;
   bool _isLoading = true;
   bool _isSubmitting = false;
 
@@ -38,6 +35,8 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
   int _score = 0;
   int? _selectedQuizOption;
   Map<String, String> _submittedAnswers = {};
+
+  bool _isPreGameCountdown = false;
 
   @override
   void initState() {
@@ -107,36 +106,61 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
   }
 
   void _setupTimer() {
-    _timerSubscription = _timerDocRef.snapshots().listen((timerSnap) {
+    final timerDocRef = FirebaseFirestore.instance
+        .collection('game_settings')
+        .doc('level2_timer');
+    _timerSubscription = timerDocRef.snapshots().listen((timerSnap) {
       if (!mounted) return;
       final data = timerSnap.data();
       final endTime = (data?['endTime'] as Timestamp?)?.toDate();
+      final countdownEndTime = (data?['countdownEndTime'] as Timestamp?)
+          ?.toDate();
+
       _countdownTimer?.cancel();
-      if (endTime != null) {
-        setState(() => _timerNotStarted = false);
-        final now = DateTime.now();
-        if (endTime.isAfter(now)) {
-          _timeLeft = endTime.difference(now);
-          _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-            final secondsLeft = _timeLeft.inSeconds - 1;
-            if (secondsLeft < 0) {
-              timer.cancel();
-              if (!_isSubmitting) _submitScore(autoSubmitted: true);
-            } else if (mounted) {
-              setState(() => _timeLeft = Duration(seconds: secondsLeft));
+      final now = DateTime.now();
+
+      if (countdownEndTime != null && countdownEndTime.isAfter(now)) {
+        setState(() {
+          _isPreGameCountdown = true;
+          _timerNotStarted = false;
+          _timeLeft = countdownEndTime.difference(now);
+        });
+        _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          final secondsLeft = _timeLeft.inSeconds - 1;
+          if (secondsLeft < 0) {
+            timer.cancel();
+            // Proactively switch UI without waiting for Firestore
+            if (mounted) {
+              setState(() {
+                _isPreGameCountdown = false;
+              });
             }
-          });
-        } else {
-          setState(() => _timeLeft = Duration.zero);
-          if (!_isSubmitting) _submitScore(autoSubmitted: true);
-        }
+          } else if (mounted) {
+            setState(() => _timeLeft = Duration(seconds: secondsLeft));
+          }
+        });
+      } else if (endTime != null && endTime.isAfter(now)) {
+        setState(() {
+          _isPreGameCountdown = false;
+          _timerNotStarted = false;
+          _timeLeft = endTime.difference(now);
+        });
+        _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          final secondsLeft = _timeLeft.inSeconds - 1;
+          if (secondsLeft < 0) {
+            timer.cancel();
+            if (!_isSubmitting) _submitScore(autoSubmitted: true);
+          } else if (mounted) {
+            setState(() => _timeLeft = Duration(seconds: secondsLeft));
+          }
+        });
       } else {
         setState(() {
+          _isPreGameCountdown = false;
           _timeLeft = Duration.zero;
           _timerNotStarted = true;
         });
       }
-      setState(() => _isLoading = false);
     });
   }
 
@@ -236,6 +260,148 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
     }
   }
 
+  @override
+  Widget build(BuildContext context) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(_timeLeft.inMinutes.remainder(60));
+    final seconds = twoDigits(_timeLeft.inSeconds.remainder(60));
+    final timeString = '$minutes:$seconds';
+
+    Widget bodyContent;
+    if (_isLoading) {
+      bodyContent = const Center(child: CircularProgressIndicator());
+    } else if (_timerNotStarted) {
+      bodyContent = _buildWaitingUI();
+    } else if (_isPreGameCountdown) {
+      bodyContent = _buildCountdownUI(timeString);
+    } else if (_puzzles.isEmpty) {
+      bodyContent = const Center(
+        child: Text(
+          "No puzzles have been added for this level yet.",
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 18,
+            color: Colors.white70,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      );
+    } else {
+      bodyContent = _buildPuzzleGameUI();
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          _isPreGameCountdown
+              ? 'Level 2 Starting Soon'
+              : 'Level 2: Code Breaker',
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: Center(
+              child: Text(
+                timeString,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.amber,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/quiz_background.png'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: bodyContent,
+      ),
+    );
+  }
+
+  Widget _buildCountdownUI(String timeString) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            'LEVEL 2 BEGINS IN',
+            style: GoogleFonts.cinzel(
+              fontSize: 24,
+              color: Colors.white70,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            timeString,
+            style: GoogleFonts.bangers(
+              fontSize: 100,
+              color: Colors.amber,
+              shadows: [
+                const Shadow(
+                  color: Colors.black,
+                  blurRadius: 10,
+                  offset: Offset(2, 2),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWaitingUI() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(20.0),
+        child: Text(
+          "Waiting for the admin to start the timer...",
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 18,
+            fontStyle: FontStyle.italic,
+            color: Colors.white70,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPuzzleGameUI() {
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          children: [
+            Text(
+              'Puzzle ${_currentIndex + 1}/${_puzzles.length}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.amber,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            _buildPuzzleUI(_puzzles[_currentIndex]),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildPuzzleUI(Puzzle puzzle) {
     return Column(
       children: [
@@ -266,7 +432,6 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
                     ),
             ),
           ),
-
         Builder(
           builder: (context) {
             switch (puzzle.type) {
@@ -310,7 +475,9 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
               },
               style: OutlinedButton.styleFrom(
                 backgroundColor: isSelected
+                    // ignore: deprecated_member_use
                     ? Colors.amber.withAlpha(50)
+                    // ignore: deprecated_member_use
                     : Colors.black.withAlpha(75),
                 side: BorderSide(
                   color: isSelected ? Colors.amber : Colors.grey.shade700,
@@ -330,6 +497,7 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
                 style: TextStyle(
                   color: isSelected
                       ? Colors.amber
+                      // ignore: deprecated_member_use
                       : Colors.white.withAlpha((0.8 * 255).round()),
                   fontSize: 16,
                 ),
@@ -370,6 +538,7 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
         const SizedBox(height: 20),
         Container(
           decoration: BoxDecoration(
+            // ignore: deprecated_member_use
             color: Colors.black.withAlpha((0.3 * 255).round()),
             borderRadius: BorderRadius.circular(12),
           ),
@@ -409,6 +578,7 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
       decoration: InputDecoration(
         hintText: 'YOUR ANSWER',
         hintStyle: TextStyle(
+          // ignore: deprecated_member_use
           color: Colors.white.withAlpha((0.5 * 255).round()),
         ),
         enabledBorder: OutlineInputBorder(
@@ -437,84 +607,6 @@ class _Level2PuzzleScreenState extends State<Level2PuzzleScreen> {
             ? 'Submit Answer'
             : 'Submit Final Answer',
         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(_timeLeft.inMinutes.remainder(60));
-    final seconds = twoDigits(_timeLeft.inSeconds.remainder(60));
-    final timeString = '$minutes:$seconds';
-    final canPlay = !_isLoading && !_timerNotStarted && _puzzles.isNotEmpty;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Level 2: Code Breaker'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Center(
-              child: Text(
-                timeString,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.amber,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage('assets/images/quiz_background.png'),
-            fit: BoxFit.cover,
-          ),
-        ),
-        child: canPlay
-            ? SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    children: [
-                      Text(
-                        'Puzzle ${_currentIndex + 1}/${_puzzles.length}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.amber,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      _buildPuzzleUI(_puzzles[_currentIndex]),
-                    ],
-                  ),
-                ),
-              )
-            : Center(
-                child: _isLoading
-                    ? const CircularProgressIndicator()
-                    : Text(
-                        _timerNotStarted
-                            ? "Waiting for the admin to start the timer..."
-                            : "No puzzles have been added for this level yet.",
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          color: Colors.white70,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-              ),
       ),
     );
   }
@@ -618,6 +710,7 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
                     duration: const Duration(milliseconds: 300),
                     child: Icon(
                       Icons.play_arrow,
+                      // ignore: deprecated_member_use
                       color: Colors.white.withAlpha((0.8 * 255).round()),
                       size: 64,
                     ),

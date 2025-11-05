@@ -22,21 +22,20 @@ class Level3Screen extends StatefulWidget {
 }
 
 class _Level3ScreenState extends State<Level3Screen> {
-  final _timerDocRef = FirebaseFirestore.instance
-      .collection('game_settings')
-      .doc('level3_timer');
   final _authService = AuthService();
   late final TextEditingController _initialAnswerController;
 
   StreamSubscription? _timerSubscription;
   Timer? _countdownTimer;
   Duration _timeLeft = Duration.zero;
-  bool _timerNotStarted = false;
+  bool _timerNotStarted = true;
 
   bool _isLoading = true;
   bool _isSubmitting = false;
   Map<String, Level3Clue> _allClues = {};
   List<String> _clueOrder = [];
+
+  bool _isPreGameCountdown = false;
 
   @override
   void initState() {
@@ -90,36 +89,62 @@ class _Level3ScreenState extends State<Level3Screen> {
   }
 
   void _setupTimer() {
-    _timerSubscription = _timerDocRef.snapshots().listen((timerSnap) {
+    final timerDocRef = FirebaseFirestore.instance
+        .collection('game_settings')
+        .doc('level3_timer');
+    _timerSubscription = timerDocRef.snapshots().listen((timerSnap) {
       if (!mounted) return;
       final data = timerSnap.data();
       final endTime = (data?['endTime'] as Timestamp?)?.toDate();
+      final countdownEndTime = (data?['countdownEndTime'] as Timestamp?)
+          ?.toDate();
+
       _countdownTimer?.cancel();
-      if (endTime != null) {
-        setState(() => _timerNotStarted = false);
-        final now = DateTime.now();
-        if (endTime.isAfter(now)) {
-          _timeLeft = endTime.difference(now);
-          _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-            final secondsLeft = _timeLeft.inSeconds - 1;
-            if (secondsLeft < 0) {
-              timer.cancel();
-              if (!_isSubmitting) _submitScore(autoSubmitted: true);
-            } else if (mounted) {
-              setState(() => _timeLeft = Duration(seconds: secondsLeft));
+      final now = DateTime.now();
+
+      if (countdownEndTime != null && countdownEndTime.isAfter(now)) {
+        setState(() {
+          _isPreGameCountdown = true;
+          _timerNotStarted = false;
+          _timeLeft = countdownEndTime.difference(now);
+        });
+        _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          final secondsLeft = _timeLeft.inSeconds - 1;
+          if (secondsLeft < 0) {
+            timer.cancel();
+            // Proactively switch UI without waiting for Firestore
+            if (mounted) {
+              setState(() {
+                _isPreGameCountdown = false;
+              });
             }
-          });
-        } else {
-          setState(() => _timeLeft = Duration.zero);
-          if (!_isSubmitting) _submitScore(autoSubmitted: true);
-        }
+          } else if (mounted) {
+            setState(() => _timeLeft = Duration(seconds: secondsLeft));
+          }
+        });
+      } else if (endTime != null && endTime.isAfter(now)) {
+        setState(() {
+          _isPreGameCountdown = false;
+          _timerNotStarted = false;
+          _timeLeft = endTime.difference(now);
+        });
+        _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          final secondsLeft = _timeLeft.inSeconds - 1;
+          if (secondsLeft < 0) {
+            timer.cancel();
+            if (!_isSubmitting) _submitScore(autoSubmitted: true);
+          } else if (mounted) {
+            setState(() => _timeLeft = Duration(seconds: secondsLeft));
+          }
+        });
       } else {
         setState(() {
+          _isPreGameCountdown = false;
           _timeLeft = Duration.zero;
           _timerNotStarted = true;
         });
       }
-      setState(() => _isLoading = false);
+      if (_isLoading) setState(() => _isLoading = false);
     });
   }
 
@@ -287,18 +312,14 @@ class _Level3ScreenState extends State<Level3Screen> {
     final minutes = twoDigits(_timeLeft.inMinutes.remainder(60));
     final seconds = twoDigits(_timeLeft.inSeconds.remainder(60));
     final timeString = '$minutes:$seconds';
-    final user = _authService.currentUser;
 
     Widget bodyContent;
     if (_isLoading) {
       bodyContent = const Center(child: CircularProgressIndicator());
     } else if (_timerNotStarted) {
-      bodyContent = const Center(
-        child: Text(
-          "Waiting for the admin to start the timer...",
-          style: TextStyle(color: Colors.white70, fontSize: 18),
-        ),
-      );
+      bodyContent = _buildWaitingUI();
+    } else if (_isPreGameCountdown) {
+      bodyContent = _buildCountdownUI(timeString);
     } else if (_clueOrder.isEmpty || _allClues['starting_point'] == null) {
       bodyContent = const Center(
         child: Text(
@@ -307,49 +328,16 @@ class _Level3ScreenState extends State<Level3Screen> {
         ),
       );
     } else {
-      bodyContent = StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('teams')
-            .doc(user!.uid)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final progressData =
-              snapshot.data!.data() as Map<String, dynamic>? ?? {};
-          final level3Progress =
-              progressData['level3Progress'] as Map<String, dynamic>?;
-
-          if (level3Progress == null) {
-            return _buildQuestionScreen(
-              _allClues['starting_point']!,
-              _initialAnswerController,
-            );
-          }
-
-          final currentClueId = level3Progress['currentClueId'] as String;
-          if (currentClueId == 'completed') {
-            return const Center(
-              child: Text(
-                "Congratulations!",
-                style: TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            );
-          }
-
-          final currentClue = _allClues[currentClueId]!;
-          final lastSolvedId = (level3Progress['solved'] as List).last;
-          final lastSolvedClue = _allClues[lastSolvedId]!;
-
-          return _buildScanScreen(currentClue, lastSolvedClue);
-        },
-      );
+      bodyContent = _buildLevel3GameUI();
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Level 3: The Final Chase'),
+        title: Text(
+          _isPreGameCountdown
+              ? 'Level 3 Starting Soon'
+              : 'Level 3: The Final Chase',
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
@@ -382,6 +370,99 @@ class _Level3ScreenState extends State<Level3Screen> {
     );
   }
 
+  Widget _buildCountdownUI(String timeString) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            'LEVEL 3 BEGINS IN',
+            style: GoogleFonts.cinzel(
+              fontSize: 24,
+              color: Colors.white70,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            timeString,
+            style: GoogleFonts.bangers(
+              fontSize: 100,
+              color: Colors.amber,
+              shadows: [
+                const Shadow(
+                  color: Colors.black,
+                  blurRadius: 10,
+                  offset: Offset(2, 2),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWaitingUI() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(20.0),
+        child: Text(
+          "Waiting for the admin to start the timer...",
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 18,
+            fontStyle: FontStyle.italic,
+            color: Colors.white70,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLevel3GameUI() {
+    final user = _authService.currentUser;
+    if (user == null) return const Center(child: Text("User not found."));
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('teams')
+          .doc(user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final progressData =
+            snapshot.data!.data() as Map<String, dynamic>? ?? {};
+        final level3Progress =
+            progressData['level3Progress'] as Map<String, dynamic>?;
+
+        if (level3Progress == null) {
+          return _buildQuestionScreen(
+            _allClues['starting_point']!,
+            _initialAnswerController,
+          );
+        }
+
+        final currentClueId = level3Progress['currentClueId'] as String;
+        if (currentClueId == 'completed') {
+          return const Center(
+            child: Text(
+              "Congratulations!",
+              style: TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          );
+        }
+
+        final currentClue = _allClues[currentClueId]!;
+        final lastSolvedId = (level3Progress['solved'] as List).last;
+        final lastSolvedClue = _allClues[lastSolvedId]!;
+
+        return _buildScanScreen(currentClue, lastSolvedClue);
+      },
+    );
+  }
+
   Widget _buildQuestionScreen(
     Level3Clue clue,
     TextEditingController answerController,
@@ -406,7 +487,9 @@ class _Level3ScreenState extends State<Level3Screen> {
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(16),
+              // ignore: deprecated_member_use
               decoration: BoxDecoration(
+                // ignore: deprecated_member_use
                 color: Colors.black.withAlpha(75),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -461,6 +544,7 @@ class _Level3ScreenState extends State<Level3Screen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
+              // ignore: deprecated_member_use
               color: Colors.black.withAlpha(75),
               borderRadius: BorderRadius.circular(12),
             ),
