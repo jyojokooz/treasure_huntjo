@@ -111,3 +111,38 @@ cd treasure_hunt_app
 
 ### 2️⃣ Install Dependencies
 flutter pub get
+
+3️⃣ Run the App
+code
+Bash
+# To run on Chrome (Web)
+flutter run -d chrome
+
+# To run on Android
+flutter run -d android
+
+
+🔥 Firebase Setup
+To make the app functional, you need to link your own Firebase project.
+Create a Project: Go to Firebase Console and create a new project.
+Add Apps: Add Android, iOS, and Web apps within the Firebase project.
+Download Config Files:
+Android: Download google-services.json and place it in android/app/.
+iOS: Download GoogleService-Info.plist and place it in ios/Runner/.
+Web/All: Run flutterfire configure to generate lib/firebase_options.dart.
+Enable Services:
+Authentication: Enable Email/Password provider.
+Firestore Database: Create a database (Start in Test Mode).
+Storage: Enable storage for image uploads.
+🌐 Deploy to Web (Firebase Hosting)
+Build the web version:
+code
+Bash
+flutter build web --release
+Initialize and Deploy:
+code
+Bash
+firebase login
+firebase init
+# Select 'Hosting' > Select 'Use existing project' > Select 'build/web' as public directory
+firebase deploy
