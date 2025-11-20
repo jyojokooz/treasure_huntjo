@@ -124,25 +124,44 @@ flutter run -d android
 
 🔥 Firebase Setup
 To make the app functional, you need to link your own Firebase project.
-Create a Project: Go to Firebase Console and create a new project.
-Add Apps: Add Android, iOS, and Web apps within the Firebase project.
-Download Config Files:
-Android: Download google-services.json and place it in android/app/.
-iOS: Download GoogleService-Info.plist and place it in ios/Runner/.
-Web/All: Run flutterfire configure to generate lib/firebase_options.dart.
-Enable Services:
-Authentication: Enable Email/Password provider.
-Firestore Database: Create a database (Start in Test Mode).
-Storage: Enable storage for image uploads.
+
+1.Create a Project: Go to Firebase Console and create a new project.
+2.Add Apps: Add Android, iOS, and Web apps within the Firebase project.
+3.Download Config Files:
+  Android: Download google-services.json and place it in android/app/.
+  iOS: Download GoogleService-Info.plist and place it in ios/Runner/.
+  Web/All: Run flutterfire configure to generate lib/firebase_options.dart.
+4.Enable Services:
+  Authentication: Enable Email/Password provider.
+  Firestore Database: Create a database (Start in Test Mode).
+  Storage: Enable storage for image uploads.
+
 🌐 Deploy to Web (Firebase Hosting)
 Build the web version:
-code
-Bash
+
 flutter build web --release
+
+
 Initialize and Deploy:
-code
-Bash
+
 firebase login
 firebase init
 # Select 'Hosting' > Select 'Use existing project' > Select 'build/web' as public directory
 firebase deploy
+
+🤝 Contributing
+Contributions, issues, and feature requests are welcome!
+
+1.Fork the Project
+2.Create your Feature Branch (git checkout -b feature/AmazingFeature)
+3.Commit your Changes (git commit -m 'Add some AmazingFeature')
+4.Push to the Branch (git push origin feature/AmazingFeature)
+5.Open a Pull Request
+
+📜 License
+Distributed under the MIT License. See LICENSE for more information.
+<div align="center">
+<p>Created with ❤️ by <strong>Joel S Raphael</strong></p>
+<p>© 2025 All Rights Reserved</p>
+</div>
+```
