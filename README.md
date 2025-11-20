@@ -105,11 +105,12 @@ jyojokooz-treasure_huntjo/
 Follow these steps to run the project locally.
 
 ### 1️⃣ Clone the Project
-```bash
+
 git clone https://github.com/yourusername/jyojokooz-treasure_huntjo.git
 cd treasure_hunt_app
+---
+##$ 2️⃣ Install Dependencies
 
-### 2️⃣ Install Dependencies
 flutter pub get
 
 3️⃣ Run the App
