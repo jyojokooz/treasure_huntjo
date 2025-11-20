@@ -108,3 +108,6 @@ Follow these steps to run the project locally.
 ```bash
 git clone https://github.com/yourusername/jyojokooz-treasure_huntjo.git
 cd treasure_hunt_app
+
+### 2️⃣ Install Dependencies
+flutter pub get
