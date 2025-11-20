@@ -1,24 +1,185 @@
-🎯 Treasure Hunt App — Flutter + Firebase
+<div align="center">
+  <h1>📱 Treasure Hunt App</h1>
+  <h3>Flutter + Firebase</h3>
+  <p>
+    <strong>A modern, interactive treasure hunt application designed for college events, competitions, and fun interactive games.</strong>
+  </p>
 
-A modern, cross-platform treasure hunt application built with Flutter and powered by Firebase Authentication, Firestore, and Hosting.
-Designed for college events, competitions, and interactive games.
+  <!-- BADGES -->
+  <p>
+    <img src="https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white" alt="Flutter" />
+    <img src="https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black" alt="Firebase" />
+    <img src="https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white" alt="Dart" />
+    <img src="https://img.shields.io/badge/Platform-Android%20|%20Web%20|%20Windows%20|%20iOS-lightgrey?style=for-the-badge" alt="Platform" />
+  </p>
+</div>
 
-🚀 Features
+<hr>
 
-🔐 User Authentication (Email/Password)
+## 🚀 Features
 
-👥 Team Registration & Approval System
+This app is designed to handle multiple teams competing in real-time through various levels of difficulty.
 
-🧩 Level-based Gameplay (Quiz → Puzzle → Clues)
+*   🔐 **Authentication:** Secure Email/Password login via Firebase Auth.
+*   👥 **Team Management:** Registration with Admin approval system.
+*   🧩 **Level-Based Gameplay:**
+    *   **Level 1:** Quiz (Time-based/Score-based).
+    *   **Level 2:** Logic Puzzles.
+    *   **Level 3:** Treasure Hunt (Clues + QR Code Scanning).
+*   📊 **Live Leaderboard:** Dynamic real-time score updates.
+*   🛠️ **Admin Panel:** Full control to manage teams, verify winners, and edit quizzes/puzzles.
+*   🎵 **Immersive Audio:** Background music and sound effects.
+*   🌐 **Cross-Platform:** Optimized for Android, Web, Windows, macOS, and Linux.
 
-📊 Live Leaderboards (Level 1, 2, 3 + Overall)
+---
 
-🎵 Background Game Music
+## 🗂️ Directory Structure
 
-🛠️ Admin Dashboard
+<details>
+  <summary><strong>📁 Click to expand full project tree</strong></summary>
+  <pre>
+jyojokooz-treasure_huntjo/
+└── treasure_hunt_app/
+    ├── README.md
+    ├── analysis_options.yaml
+    ├── firebase.json
+    ├── pubspec.yaml
+    ├── android/
+    │   ├── app/
+    │   │   ├── google-services.json
+    │   │   └── src/main/AndroidManifest.xml
+    ├── assets/
+    │   ├── audio/
+    │   └── images/
+    ├── lib/
+    │   ├── firebase_options.dart
+    │   ├── main.dart
+    │   ├── models/
+    │   │   ├── level3_clue_model.dart
+    │   │   ├── puzzle_model.dart
+    │   │   ├── quiz_model.dart
+    │   │   └── team_model.dart
+    │   ├── screens/
+    │   │   ├── admin_dashboard.dart
+    │   │   ├── auth_wrapper.dart
+    │   │   ├── decision_screen.dart
+    │   │   ├── gamer_dashboard.dart
+    │   │   ├── login_screen.dart
+    │   │   ├── pending_screen.dart
+    │   │   ├── register_screen.dart
+    │   │   ├── splash_screen.dart
+    │   │   ├── winner_announcement_screen.dart
+    │   │   ├── admin_panel/
+    │   │   └── game_panel/
+    │   ├── services/
+    │   │   ├── auth_service.dart
+    │   │   ├── firestore_service.dart
+    │   │   ├── image_upload_service.dart
+    │   │   └── music_service.dart
+    │   └── widgets/
+    │       ├── custom_admin_nav_bar.dart
+    │       ├── game_nav_bar.dart
+    │       └── glassmorphic_container.dart
+    ├── web/
+    │   ├── index.html
+    │   └── manifest.json
+    └── .firebase/
+  </pre>
+</details>
 
-📸 QR Scanner for Level Navigation
+### 📦 Simplified Folder Explanation
 
-📈 Realtime Firestore Updates
+| Folder | Purpose |
+| :--- | :--- |
+| `lib/` | Main Flutter source code containing logic and UI. |
+| `screens/` | UI Pages (Admin panel, Game panel, Login, etc.). |
+| `services/` | Backend logic (Firebase Auth, Firestore, Storage, Audio). |
+| `models/` | Data models for quizzes, puzzles, and team structures. |
+| `assets/` | Static files like images, logos, and audio files. |
+| `widgets/` | Reusable UI components (Nav bars, Glassmorphism cards). |
 
-🌐 Web + Android + Windows + macOS support
+---
+
+## 🛠️ Installation Guide
+
+Follow these steps to run the project locally.
+
+### 1️⃣ Clone the Project
+```bash
+git clone https://github.com/yourusername/jyojokooz-treasure_huntjo.git
+cd treasure_hunt_app
+2️⃣ Install Dependencies
+code
+Bash
+flutter pub get
+3️⃣ Run the App
+code
+Bash
+# To run on Chrome (Web)
+flutter run -d chrome
+
+# To run on Android
+flutter run -d android
+🔥 Firebase Setup
+To make the app functional, you need to link your own Firebase project.
+Create a Project: Go to Firebase Console and create a new project.
+Add Apps: Add Android, iOS, and Web apps within the Firebase project.
+Download Config Files:
+Android: Download google-services.json and place it in android/app/.
+iOS: Download GoogleService-Info.plist and place it in ios/Runner/.
+Web/All: Run flutterfire configure to generate lib/firebase_options.dart.
+Enable Services:
+Authentication: Enable Email/Password provider.
+Firestore Database: Create a database (Start in Test Mode).
+Storage: Enable storage for image uploads.
+🌐 Deploy to Web (Firebase Hosting)
+Build the web version:
+code
+Bash
+flutter build web --release
+Initialize and Deploy:
+code
+Bash
+firebase login
+firebase init
+# Select 'Hosting' > Select 'Use existing project' > Select 'build/web' as public directory
+firebase deploy
+🖼️ Screenshots
+<div align="center">
+<!-- Replace src with your actual image paths -->
+<table>
+<tr>
+<td align="center"><strong>Splash Screen</strong></td>
+<td align="center"><strong>Login</strong></td>
+<td align="center"><strong>Admin Dashboard</strong></td>
+</tr>
+<tr>
+<td><img src="https://via.placeholder.com/200x400?text=Splash" alt="Splash" width="200"/></td>
+<td><img src="https://via.placeholder.com/200x400?text=Login" alt="Login" width="200"/></td>
+<td><img src="https://via.placeholder.com/200x400?text=Admin" alt="Admin" width="200"/></td>
+</tr>
+<tr>
+<td align="center"><strong>Game Level 1</strong></td>
+<td align="center"><strong>Game Level 2</strong></td>
+<td align="center"><strong>Leaderboard</strong></td>
+</tr>
+<tr>
+<td><img src="https://via.placeholder.com/200x400?text=Quiz" alt="Quiz" width="200"/></td>
+<td><img src="https://via.placeholder.com/200x400?text=Puzzle" alt="Puzzle" width="200"/></td>
+<td><img src="https://via.placeholder.com/200x400?text=Leaderboard" alt="Leaderboard" width="200"/></td>
+</tr>
+</table>
+</div>
+🤝 Contributing
+Contributions, issues, and feature requests are welcome!
+Fork the Project
+Create your Feature Branch (git checkout -b feature/AmazingFeature)
+Commit your Changes (git commit -m 'Add some AmazingFeature')
+Push to the Branch (git push origin feature/AmazingFeature)
+Open a Pull Request
+📜 License
+Distributed under the MIT License. See LICENSE for more information.
+<div align="center">
+<p>Created with ❤️ by <strong>Joel S Raphael</strong></p>
+<p>© 2025 All Rights Reserved</p>
+</div>
